@@ -222,12 +222,143 @@ def test_label_unit_records_validation_failure_separately(tmp_path):
 
 def test_label_unit_stops_on_permanent_error(tmp_path):
     store = runner.ResultStore(tmp_path / "r.jsonl")
-    client = FakeClient([_api_error(anthropic.AuthenticationError, 401)])
+    client = FakeClient([_api_error(anthropic.NotFoundError, 404)])
 
     result = runner.label_unit(client, _unit_row(), LabelingConfig(enabled=True, max_retries=3), store,
                                mode=runner.MODE_MOCK, sleep=lambda s: None)
 
     assert result["status"] == runner.STATUS_PERMANENT_FAILED and client.calls == 1
+
+
+@pytest.mark.parametrize("error", [
+    _api_error(anthropic.AuthenticationError, 401),
+    _api_error(anthropic.PermissionDeniedError, 403),
+    anthropic.BadRequestError("Your credit balance is too low", response=httpx.Response(400, request=httpx.Request("POST", "https://example.invalid")), body=None),
+])
+def test_run_labeling_aborts_immediately_on_fatal_error(tmp_path, error):
+    store = runner.ResultStore(tmp_path / "r.jsonl")
+    units = pd.DataFrame([_unit_row("D0001"), _unit_row("D0002")])
+    client = FakeClient([error, json.dumps(_payload("D0002"), ensure_ascii=False)])
+
+    with pytest.raises(runner.FatalLabelingError):
+        runner.run_labeling(units, LabelingConfig(enabled=True, max_retries=3), store, client=client,
+                            mode=runner.MODE_MOCK, sleep=lambda s: None)
+
+    assert client.calls == 1
+    assert [r["status"] for r in store.load()] == [runner.STATUS_FATAL]
+
+
+def test_make_client_disables_sdk_internal_retries(monkeypatch):
+    captured = {}
+    monkeypatch.setenv(runner.API_KEY_ENV, "dummy-key-for-test")
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **kwargs: captured.update(kwargs) or "client")
+
+    assert runner.make_client() == "client"
+    assert captured == {"max_retries": 0}
+
+
+def test_make_client_requires_env(monkeypatch):
+    monkeypatch.delenv(runner.API_KEY_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=runner.API_KEY_ENV):
+        runner.make_client()
+
+
+def test_summarize_run_excludes_reused_and_includes_failed_attempts(tmp_path):
+    store = runner.ResultStore(tmp_path / "r.jsonl")
+    units = pd.DataFrame([_unit_row("D0001"), _unit_row("D0002")])
+    config = LabelingConfig(enabled=True, max_retries=1)
+
+    # 1차 실행: D0001 성공, D0002 검증 실패 후 성공 (호출 3회)
+    client = FakeClient([json.dumps(_payload("D0001"), ensure_ascii=False), "not json",
+                         json.dumps(_payload("D0002"), ensure_ascii=False)])
+    first = runner.run_labeling(units, config, store, client=client, mode=runner.MODE_MOCK, run_id="run-1", sleep=lambda s: None)
+    summary1 = runner.summarize_run(store, "run-1", mode=runner.MODE_MOCK)
+    unit_cost = runner.estimate_cost_usd(100, 50, config.model)
+
+    assert first["run_id"].tolist() == ["run-1", "run-1"]
+    assert summary1["이번실행"]["호출수"] == 3
+    assert summary1["이번실행"]["입력토큰"] == 300 and summary1["이번실행"]["출력토큰"] == 150
+    assert summary1["이번실행"]["비용USD"] == pytest.approx(unit_cost * 3)
+    assert summary1["이번실행"]["기록상태"] == {"success": 2, "validation_failed": 1}
+
+    # 2차 실행: 전부 재사용, 이번 실행 비용 0, 누적은 그대로
+    client = FakeClient([])
+    second = runner.run_labeling(units, config, store, client=client, mode=runner.MODE_MOCK, run_id="run-2", sleep=lambda s: None)
+    summary2 = runner.summarize_run(store, "run-2", mode=runner.MODE_MOCK)
+
+    assert second["reused"].all() and second["cost_usd"].sum() == 0 and client.calls == 0
+    assert summary2["이번실행"]["호출수"] == 0 and summary2["이번실행"]["비용USD"] == 0
+    assert summary2["누적"]["비용USD"] == pytest.approx(unit_cost * 3)
+
+
+def test_run_labeling_stops_before_budget_is_exceeded(tmp_path):
+    store = runner.ResultStore(tmp_path / "r.jsonl")
+    units = pd.DataFrame([_unit_row(f"D{i:04d}") for i in range(1, 5)])
+    config = LabelingConfig(enabled=True, max_tokens=400)
+    client = FakeClient([json.dumps(_payload(f"D{i:04d}"), ensure_ascii=False) for i in range(1, 5)])
+
+    # 호출당 실제 비용 0.00035, 다음 호출 최대 예상 = 100입력 + 400출력 = 0.0021
+    budget = runner.estimate_cost_usd(100, 400, config.model) + runner.estimate_cost_usd(100, 50, config.model) * 2 - 1e-6
+    summary = runner.run_labeling(units, config, store, client=client, mode=runner.MODE_MOCK, budget_usd=budget,
+                                  input_token_guess=100, sleep=lambda s: None)
+
+    assert summary["status"].tolist() == ["success", "success", "budget_stopped", "budget_stopped"]
+    assert client.calls == 2
+    assert summary["cost_usd"].sum() <= budget
+
+
+def _sheet_with_result(cache_key="k1"):
+    records = [{"mode": "live", "라벨링단위ID": "u-D0001", "status": "success", "model": "m", "run_id": "run-1",
+                "cache_key": cache_key, "labels": _payload()["라벨"], "reason": "r", "review_flags": []}]
+    return review.build_review_sheet(_sample_frame(), records)
+
+
+def test_merge_existing_review_preserves_values_when_result_unchanged():
+    existing = _sheet_with_result("k1")
+    existing.loc[0, ["검토상태", "검토_매운맛", "검토메모"]] = [review.REVIEW_CORRECTED, "강함", "덜 맵다"]
+
+    merged = review.merge_existing_review(_sheet_with_result("k1"), existing)
+
+    assert merged.loc[0, "검토상태"] == review.REVIEW_CORRECTED
+    assert merged.loc[0, "검토_매운맛"] == "강함" and merged.loc[0, "검토메모"] == "덜 맵다"
+    assert merged.loc[0, "모델_매운맛"] == "보통"
+
+
+def test_merge_existing_review_marks_recheck_when_result_changed():
+    existing = _sheet_with_result("k1")
+    existing.loc[0, ["검토상태", "검토_매운맛"]] = [review.REVIEW_APPROVED, "보통"]
+
+    merged = review.merge_existing_review(_sheet_with_result("k2"), existing)
+
+    assert merged.loc[0, "검토상태"] == review.REVIEW_RECHECK
+    assert merged.loc[0, "검토_매운맛"] == "보통"
+    # 재검토 행은 일치율 계산에 들어가지 않는다
+    metrics = review.compute_quality_metrics(
+        [{"mode": "live", "라벨링단위ID": "u-D0001", "status": "success", "model": "m", "cache_key": "k2",
+          "labels": _payload()["라벨"], "reason": "r", "review_flags": []}], merged)
+    assert metrics["검토일치율_매운맛"] == review.NOT_REVIEWED
+
+
+def test_merge_existing_review_ignores_unreviewed_rows():
+    existing = _sheet_with_result("k1")
+    merged = review.merge_existing_review(_sheet_with_result("k1"), existing)
+    assert merged.loc[0, "검토상태"] == review.REVIEW_PENDING
+
+
+def test_save_review_sheet_backs_up_and_round_trips_review(tmp_path):
+    path = tmp_path / "review_sheet.csv"
+    sheet = _sheet_with_result("k1")
+    sheet.loc[0, ["검토상태", "검토_국물", "검토메모"]] = [review.REVIEW_APPROVED, "국물요리", "확인"]
+    assert review.save_review_sheet(sheet, path) is None
+
+    reloaded = review.load_review_sheet(path)
+    merged = review.merge_existing_review(_sheet_with_result("k1"), reloaded)
+    backup = review.save_review_sheet(merged, path)
+
+    assert backup is not None and backup.exists() and backup.parent.name == "backups"
+    again = review.load_review_sheet(path)
+    assert again.loc[0, "검토상태"] == review.REVIEW_APPROVED
+    assert again.loc[0, "검토_국물"] == "국물요리" and again.loc[0, "검토메모"] == "확인"
 
 
 def test_run_labeling_resumes_and_summarizes(tmp_path):
