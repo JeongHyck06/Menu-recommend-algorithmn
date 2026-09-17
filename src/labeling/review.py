@@ -1,5 +1,9 @@
 """수동 검토 시트와 품질 지표"""
 
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
 import pandas as pd
 
 from src.labeling.runner import MODE_LIVE, STATUS_SUCCESS, STATUS_VALIDATION_FAILED
@@ -11,12 +15,18 @@ REVIEW_PENDING = "검토대기"
 REVIEW_FAILED = "실패"
 REVIEW_APPROVED = "승인"
 REVIEW_CORRECTED = "수정"
+REVIEW_RECHECK = "재검토"
+REVIEWED_STATES = {REVIEW_APPROVED, REVIEW_CORRECTED}
 
 NOT_RUN = "미실행"
 NOT_REVIEWED = "미검토"
 
 INPUT_COLUMNS = ["라벨링단위ID", "식품코드", "식품코드목록", "식품명", "메뉴명", "이름접두어", "대표식품명",
                  "식품대분류명", "업체명", "온도", "프랜차이즈여부", "선정사유"]
+REVIEW_VALUE_COLUMNS = [f"검토_{a}" for a in ATTRIBUTES]
+SHEET_COLUMNS = [*INPUT_COLUMNS, "온도출처", "상태", "model", "run_id", "cache_key", "라벨출처",
+                 *[f"모델_{a}" for a in ATTRIBUTES], "근거", "검토플래그",
+                 *REVIEW_VALUE_COLUMNS, "검토상태", "검토메모", "오류"]
 
 
 def latest_records(records: list[dict], mode: str = MODE_LIVE) -> dict[str, dict]:
@@ -49,19 +59,77 @@ def build_review_sheet(sample: pd.DataFrame, records: list[dict], mode: str = MO
             row["근거"] = record["reason"]
             row["검토플래그"] = ";".join(record.get("review_flags") or [])
             row["model"] = record["model"]
+            row["cache_key"] = record.get("cache_key")
+            row["run_id"] = record.get("run_id")
         else:
             row["상태"] = record["status"]
             row["검토상태"] = REVIEW_FAILED
             row["오류"] = record.get("error")
+            row["cache_key"] = record.get("cache_key")
+            row["run_id"] = record.get("run_id")
         for attr in ATTRIBUTES:
             row.setdefault(f"모델_{attr}", None)
             row[f"검토_{attr}"] = None
         row["검토메모"] = None
         rows.append(row)
-    columns = [*INPUT_COLUMNS, "온도출처", "상태", "model", "라벨출처",
-               *[f"모델_{a}" for a in ATTRIBUTES], "근거", "검토플래그",
-               *[f"검토_{a}" for a in ATTRIBUTES], "검토상태", "검토메모", "오류"]
-    return pd.DataFrame(rows).reindex(columns=columns)
+    return pd.DataFrame(rows).reindex(columns=SHEET_COLUMNS)
+
+
+def merge_existing_review(sheet: pd.DataFrame, existing: pd.DataFrame | None) -> pd.DataFrame:
+    """기존 검토 파일의 검토값·검토상태·메모를 보존
+
+    cache_key가 같으면 그대로 유지, 다르면(입력·모델·프롬프트·스키마 변경) 값은 남기되 검토상태는 재검토
+    """
+    if existing is None or existing.empty or "라벨링단위ID" not in existing:
+        return sheet
+    merged = sheet.copy()
+    old = existing.drop_duplicates("라벨링단위ID", keep="last").set_index("라벨링단위ID")
+    review_columns = [*REVIEW_VALUE_COLUMNS, "검토메모"]
+    for idx, row in merged.iterrows():
+        uid = row["라벨링단위ID"]
+        if uid not in old.index:
+            continue
+        prev = old.loc[uid]
+        had_review = prev.get("검토상태") in REVIEWED_STATES or any(
+            pd.notna(prev.get(c)) for c in review_columns if c in prev
+        )
+        if not had_review:
+            continue
+        for c in review_columns:
+            if c in prev and pd.notna(prev[c]):
+                merged.at[idx, c] = prev[c]
+        same_result = (
+            row["상태"] == STATUS_SUCCESS
+            and pd.notna(prev.get("cache_key"))
+            and prev.get("cache_key") == row.get("cache_key")
+        )
+        if same_result:
+            merged.at[idx, "검토상태"] = prev["검토상태"]
+        elif row["상태"] == STATUS_SUCCESS:
+            merged.at[idx, "검토상태"] = REVIEW_RECHECK
+    return merged
+
+
+def load_review_sheet(path: Path | str) -> pd.DataFrame | None:
+    path = Path(path)
+    if not path.exists():
+        return None
+    return pd.read_csv(path, encoding="utf-8-sig", dtype=str)
+
+
+def save_review_sheet(sheet: pd.DataFrame, path: Path | str) -> Path | None:
+    """저장 전 기존 파일을 backups/ 아래에 시각을 붙여 백업, 백업 경로 반환"""
+    path = Path(path)
+    backup = None
+    if path.exists():
+        backup_dir = path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = backup_dir / f"{path.stem}.{stamp}{path.suffix}"
+        shutil.copy2(path, backup)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.to_csv(path, index=False, encoding="utf-8-sig")
+    return backup
 
 
 def compute_quality_metrics(records: list[dict], review_sheet: pd.DataFrame, mode: str = MODE_LIVE) -> dict:
