@@ -39,6 +39,40 @@ BEVERAGE_CATEGORIES = ["음료 및 차류"]
 # 빵 및 과자류 중 식사로 취급하는 대표식품명
 MEAL_BREAD_REPRESENTATIVES = ["피자", "버거", "햄버거", "샌드위치", "핫도그", "토스트"]
 
+# 조리법 기준 대분류: 식사와 반찬이 섞여 있어 대표식품명으로 다시 판단
+COOKING_CATEGORIES = ["볶음류", "조림류", "구이류", "튀김류", "찜류", "전·적 및 부침류"]
+
+# 대표식품명에 포함되면 반찬 (식사 키워드보다 우선)
+SIDE_DISH_STRONG_KEYWORDS = ["장조림", "맛탕", "뱅어포", "콘치즈", "떡강정"]
+
+# 대표식품명에 포함되면 반찬 (식사 키워드가 함께 있으면 식사)
+SIDE_DISH_KEYWORDS = [
+    "멸치", "마늘쫑", "미역줄기", "꽈리고추", "풋고추", "건새우", "오징어채", "오징어포", "파래",
+    "김치볶음", "감자", "고구마", "어묵", "양파", "호박", "피망", "버섯", "가지", "우엉", "연근",
+    "죽순", "당근", "껍질콩", "콩조림", "콩자반", "땅콩", "다시마", "곤약", "무조림", "메추리알",
+    "달걀", "계란", "두부", "쥐포", "김구이", "김튀김", "김부각", "깻잎", "고추조림", "고추전",
+    "고추튀김", "소시지", "햄", "베이컨", "런천미트", "미트볼", "완자", "튀각", "부각", "옥수수",
+    "더덕", "브로콜리", "콩나물", "유부", "맛살", "채소", "도라지", "쑥", "김말이", "게맛살",
+    "양념두부", "고추장볶음", "새우조림", "게조림", "머위", "시금치", "조미 김", "장떡", "배추전",
+    "미나리", "메밀전", "파래전", "스크램블드에그", "치즈스틱", "치즈볼", "양미리", "단호박",
+    "산적", "수란", "닭발", "닭껍데기", "닭모래집", "꼬막", "가오리", "우유튀김", "식빵튀김",
+]
+
+# 반찬 키워드가 있어도 식사로 유지하는 키워드
+MEAL_KEYWORDS = [
+    "밥", "국", "탕", "찌개", "면", "떡볶이", "라볶이", "쫄볶이", "갈비", "불고기", "스테이크",
+    "탕수", "돈가스", "까스", "가스", "치킨", "닭튀김", "닭강정", "닭찜", "찜닭", "수육", "족발",
+    "동파육", "김치찜", "그라탕", "잡채", "제육", "순대", "곱창", "막창", "대창", "삼겹살", "오겹살",
+    "낙지", "주꾸미", "오징어볶음", "오징어불고기", "해물", "마파두부", "감바스", "팔보채", "유산슬",
+    "깐풍", "라조기", "난자완스", "멘보샤", "깐쇼", "떡갈비", "훈제오리", "오리", "장어", "폭찹",
+    "함박", "닭도리탕", "닭볶음탕", "스튜", "빈대떡", "파전", "김치전", "녹두전", "돼지고기",
+    "소고기", "닭고기", "돼지", "닭구이", "닭다리", "닭조림", "아귀", "꽃게", "게찜", "대구", "도미",
+    "조기", "고등어", "갈치", "삼치", "꽁치", "가자미", "임연수", "연어", "우럭", "전어", "병어",
+    "민어", "동태", "코다리", "황태구이", "굴찜", "바지락", "홍어", "붕어", "메기", "복", "전복",
+    "새우구이", "새우튀김", "오징어튀김", "오징어찜", "문어", "세발낙지", "두부김치", "깐풍기",
+    "꼬치", "닭날개", "옥돔", "북어", "오믈렛",
+]
+
 MENU_GROUP_MEAL = "식사"
 MENU_GROUP_SIDE = "반찬"
 MENU_GROUP_DESSERT = "디저트"
@@ -86,6 +120,21 @@ def load_raw(path: Path | str) -> pd.DataFrame:
     return pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
 
 
+def is_side_dish(representative_name: str) -> bool:
+    """조리법 대분류 안에서 대표식품명으로 반찬 여부 판단.
+
+    강한 반찬 키워드 -> 반찬
+    반찬 키워드 있고 식사 키워드 없음 -> 반찬
+    그 외 -> 식사
+    """
+    name = str(representative_name)
+    if any(k in name for k in SIDE_DISH_STRONG_KEYWORDS):
+        return True
+    has_side = any(k in name for k in SIDE_DISH_KEYWORDS)
+    has_meal = any(k in name for k in MEAL_KEYWORDS)
+    return has_side and not has_meal
+
+
 def assign_menu_group(df: pd.DataFrame) -> pd.Series:
     category = df["식품대분류명"]
     representative = df["대표식품명"]
@@ -98,6 +147,9 @@ def assign_menu_group(df: pd.DataFrame) -> pd.Series:
 
     meal_bread = (category == "빵 및 과자류") & representative.isin(MEAL_BREAD_REPRESENTATIVES)
     group[meal_bread] = MENU_GROUP_MEAL
+
+    cooking_side = category.isin(COOKING_CATEGORIES) & representative.map(is_side_dish)
+    group[cooking_side] = MENU_GROUP_SIDE
     return group
 
 

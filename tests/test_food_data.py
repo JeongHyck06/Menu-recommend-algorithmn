@@ -64,6 +64,41 @@ def test_assign_menu_group():
     assert fd.assign_menu_group(df).tolist() == ["식사", "반찬", "디저트", "식사", "음료", "기타"]
 
 
+@pytest.mark.parametrize(
+    "representative, expected_side",
+    [
+        ("잔멸치볶음", True),
+        ("김치볶음", True),
+        ("달걀말이", True),
+        ("두부조림", True),
+        ("감자튀김", True),
+        # 식사 키워드가 있어도 강한 반찬 키워드 우선
+        ("소고기 장조림", True),
+        ("고구마맛탕", True),
+        # 반찬 키워드(감자, 두부, 소시지)가 있어도 식사 키워드로 유지
+        ("감자그라탕", False),
+        ("마파두부", False),
+        ("두부 탕수", False),
+        ("제육볶음", False),
+        ("고등어구이", False),
+        ("닭튀김", False),
+        ("돼지갈비찜", False),
+    ],
+)
+def test_is_side_dish(representative, expected_side):
+    assert fd.is_side_dish(representative) is expected_side
+
+
+def test_side_dish_rule_applies_only_to_cooking_categories():
+    df = pd.DataFrame(
+        {
+            "식품대분류명": ["볶음류", "밥류", "국 및 탕류", "면 및 만두류"],
+            "대표식품명": ["김치볶음", "김치 볶음밥", "달걀국", "어묵 우동"],
+        }
+    )
+    assert fd.assign_menu_group(df).tolist() == ["반찬", "식사", "식사", "식사"]
+
+
 def _raw_frame(rows: list[dict]) -> pd.DataFrame:
     base = {
         "식품명": "흰죽",
