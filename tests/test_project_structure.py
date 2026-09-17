@@ -7,6 +7,7 @@ import pytest
 PACKAGES = [
     "src",
     "src.preprocessing",
+    "src.labeling",
     "src.embedding",
     "src.retrieval",
     "src.ranking",

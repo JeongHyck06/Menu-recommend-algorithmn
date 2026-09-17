@@ -1,4 +1,4 @@
-"""음식 데이터 정제 로직 테스트."""
+"""음식 데이터 정제 로직 테스트"""
 
 import numpy as np
 import pandas as pd
