@@ -27,6 +27,7 @@ menu-recommendation/
 ├── notebooks/        # 실험용 Jupyter Notebook (번호 순서대로 진행)
 ├── src/
 │   ├── preprocessing/   # 자연어 전처리, 음식 데이터 정제
+│   ├── labeling/        # LLM 기반 음식 속성 라벨링
 │   ├── embedding/       # 문장·음식 임베딩
 │   ├── retrieval/       # 유사도 기반 후보 검색
 │   ├── ranking/         # 음식 속성 기반 랭킹

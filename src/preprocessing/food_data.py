@@ -1,4 +1,4 @@
-"""공공 음식 영양성분 데이터 정제.
+"""공공 음식 영양성분 데이터 정제
 
 원본 CSV -> 메뉴 그룹 분류 -> 이름 정제 -> 중량 분리 -> 컬럼 선별 -> 중복 통합
 """
@@ -121,7 +121,7 @@ def load_raw(path: Path | str) -> pd.DataFrame:
 
 
 def is_side_dish(representative_name: str) -> bool:
-    """조리법 대분류 안에서 대표식품명으로 반찬 여부 판단.
+    """조리법 대분류 안에서 대표식품명으로 반찬 여부 판단
 
     강한 반찬 키워드 -> 반찬
     반찬 키워드 있고 식사 키워드 없음 -> 반찬
@@ -154,7 +154,7 @@ def assign_menu_group(df: pd.DataFrame) -> pd.Series:
 
 
 def parse_food_name(name: str, is_franchise: bool) -> dict:
-    """식품명 -> 메뉴명, 이름접두어, 온도, 사이즈.
+    """식품명 -> 메뉴명, 이름접두어, 온도, 사이즈
 
     프랜차이즈: 첫 '_' 앞은 메뉴 카테고리 접두어로 분리
     비프랜차이즈: '_'는 재료 변형 구분자이므로 공백으로 치환
@@ -199,7 +199,7 @@ def add_name_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def parse_weight(series: pd.Series) -> pd.DataFrame:
-    """'291.90ml' -> 중량값 291.9, 중량단위 'ml'. 형식이 다르면 둘 다 NaN."""
+    """'291.90ml' -> 중량값 291.9, 중량단위 'ml', 형식이 다르면 둘 다 NaN"""
     extracted = series.astype("string").str.extract(WEIGHT_PATTERN)
     value = pd.to_numeric(extracted[0], errors="coerce").astype("float64")
     unit = extracted[1].str.lower().astype("object").where(extracted[1].notna(), np.nan)
@@ -214,7 +214,7 @@ def replace_not_applicable(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
 
 
 def deduplicate(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """DEDUP_KEY_COLUMNS 기준 중복 행 통합.
+    """DEDUP_KEY_COLUMNS 기준 중복 행 통합
 
     식품코드 오름차순 첫 행 유지 -> 나머지 행은 대표 식품코드에 매핑
     반환: (유지 행, 매핑표[식품코드, 대표식품코드, 식품명, 식품기원명, 업체명])
@@ -231,7 +231,7 @@ def deduplicate(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def preprocess(raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """원본 -> (정제 데이터, 중복 매핑표). 원본은 수정하지 않는다."""
+    """원본 -> (정제 데이터, 중복 매핑표), 원본은 수정하지 않음"""
     df = raw.copy()
     df["프랜차이즈여부"] = df["업체명"] != NOT_APPLICABLE
     df["메뉴그룹"] = assign_menu_group(df)
