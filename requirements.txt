@@ -3,3 +3,4 @@ numpy
 jupyter
 scikit-learn
 pytest
+matplotlib
