@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.labeling.runner import MODE_LIVE, STATUS_SUCCESS, STATUS_VALIDATION_FAILED
-from src.labeling.schema import ATTRIBUTES, SOURCE_MODEL, SOURCE_ORIGINAL, UNKNOWN
-from src.labeling.validation import FLAG_TEMPERATURE_CONFLICT
+from experiments.labeling.runner import MODE_LIVE, STATUS_SUCCESS, STATUS_VALIDATION_FAILED
+from experiments.labeling.schema import ATTRIBUTES, SOURCE_MODEL, SOURCE_ORIGINAL, UNKNOWN
+from experiments.labeling.validation import FLAG_TEMPERATURE_CONFLICT
 
 REVIEW_NOT_RUN = "미실행"
 REVIEW_PENDING = "검토대기"

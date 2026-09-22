@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.preprocessing import food_data as fd
+from recommender.preprocessing import food_data as fd
 
 
 @pytest.mark.parametrize(

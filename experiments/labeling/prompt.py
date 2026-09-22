@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from src.labeling.schema import ATTRIBUTES, SCHEMA_VERSION, UNKNOWN, schema_text
+from experiments.labeling.schema import ATTRIBUTES, SCHEMA_VERSION, UNKNOWN, schema_text
 
 PROMPT_VERSION = "v1"
 
