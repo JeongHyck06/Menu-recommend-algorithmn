@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from experiments.labeling.schema import (
+from ai.experiments.labeling.schema import (
     ATTRIBUTES,
     MAX_REASON_LENGTH,
     ORIGINAL_TEMPERATURE_COMPATIBLE,

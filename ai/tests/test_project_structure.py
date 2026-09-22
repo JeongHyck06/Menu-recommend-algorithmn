@@ -6,14 +6,14 @@ import pytest
 
 PACKAGES = [
     "backend.app.main",
-    "experiments",
-    "recommender",
-    "recommender.preprocessing",
-    "experiments.labeling",
-    "recommender.embedding",
-    "recommender.retrieval",
-    "recommender.ranking",
-    "recommender.recommendation",
+    "ai.experiments",
+    "ai.recommender",
+    "ai.recommender.preprocessing",
+    "ai.experiments.labeling",
+    "ai.recommender.embedding",
+    "ai.recommender.retrieval",
+    "ai.recommender.ranking",
+    "ai.recommender.recommendation",
 ]
 
 
