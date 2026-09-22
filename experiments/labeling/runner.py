@@ -14,8 +14,8 @@ from typing import Callable
 
 import pandas as pd
 
-from src.labeling.prompt import LabelingConfig, build_request_params, build_unit_input
-from src.labeling.validation import ResponseValidationError, parse_response_text, validate_response
+from experiments.labeling.prompt import LabelingConfig, build_request_params, build_unit_input
+from experiments.labeling.validation import ResponseValidationError, parse_response_text, validate_response
 
 # 공식 가격 확인일 2026-09-17, https://platform.claude.com/docs/en/about-claude/pricing (USD / MTok)
 PRICING = {

@@ -5,13 +5,15 @@ import importlib
 import pytest
 
 PACKAGES = [
-    "src",
-    "src.preprocessing",
-    "src.labeling",
-    "src.embedding",
-    "src.retrieval",
-    "src.ranking",
-    "src.recommendation",
+    "backend.app.main",
+    "experiments",
+    "recommender",
+    "recommender.preprocessing",
+    "experiments.labeling",
+    "recommender.embedding",
+    "recommender.retrieval",
+    "recommender.ranking",
+    "recommender.recommendation",
 ]
 
 

@@ -1,7 +1,4 @@
-pandas
-numpy
-jupyter
-scikit-learn
+# 전체 Python 개발 환경
+-r backend/requirements.txt
+-r experiments/requirements.txt
 pytest
-matplotlib
-anthropic
