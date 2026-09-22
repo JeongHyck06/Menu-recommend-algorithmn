@@ -6,7 +6,7 @@ from collections import Counter
 
 import pandas as pd
 
-from recommender.preprocessing import food_data as fd
+from ai.recommender.preprocessing import food_data as fd
 
 # 같은 값을 가진 행끼리만 라벨을 공유한다
 UNIT_KEY_COLUMNS = ["메뉴명", "이름접두어", "대표식품명", "식품대분류명", "업체명", "온도"]
