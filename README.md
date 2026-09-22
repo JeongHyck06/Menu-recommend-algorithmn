@@ -1,81 +1,106 @@
-# Menu Recommendation
+# menu-recommendation
 
-자연어 입력을 기반으로 음식 메뉴를 추천하는 프로젝트입니다.
+자연어 입력을 기반으로 음식 메뉴를 추천하는 AI 프로젝트입니다.
 
-## 폴더 구조
+예: "오늘 비도 오고 쌀쌀한데 얼큰하고 따뜻한 국물 먹고 싶어" -> 음식 데이터를 바탕으로 적절한 메뉴 Top-K 추천
 
-```text
-Menu_recommend/
-├── frontend/                   # 사용자 화면 (아직 미구현)
-├── backend/                    # 백엔드 API
-│   ├── app/main.py             # 현재 구조 확인용 진입점
-│   └── requirements.txt
-├── ai/                         # 추천 엔진·실험·데이터
-│   ├── recommender/
-│   │   ├── preprocessing/
-│   │   ├── embedding/
-│   │   ├── retrieval/
-│   │   ├── ranking/
-│   │   ├── recommendation/
-│   │   └── tests/
-│   ├── experiments/
-│   │   ├── notebooks/          # 01 분석 ~ 06 평가
-│   │   ├── labeling/           # 오프라인 음식 속성 라벨링
-│   │   └── tests/
-│   ├── data/
-│   │   ├── raw/                # 원본 CSV
-│   │   ├── processed/labeling/ # 정제·라벨·진행 기록
-│   │   └── embeddings/         # 임베딩 결과
-│   ├── tests/                  # 패키지 통합 검사
-│   └── requirements.txt
-├── requirements.txt            # 전체 개발 의존성
-├── pytest.ini
+## 추천 파이프라인
+
+```
+자연어 입력
+→ 자연어 전처리 및 특징 추출   (src/preprocessing)
+→ 문장 임베딩                 (src/embedding)
+→ 음식 데이터 임베딩           (src/embedding)
+→ 유사도 기반 후보 검색         (src/retrieval)
+→ 음식 속성을 활용한 랭킹       (src/ranking)
+→ Top-K 메뉴 추천             (src/recommendation)
+```
+
+## 디렉터리 구조
+
+```
+menu-recommendation/
+├── data/
+│   ├── raw/          # 원본 공공 음식 데이터 (Git 제외)
+│   ├── processed/    # 정제·라벨링된 데이터 (Git 제외)
+│   └── embeddings/   # 생성된 임베딩 결과물 (Git 제외)
+├── notebooks/        # 실험용 Jupyter Notebook (번호 순서대로 진행)
+├── src/
+│   ├── preprocessing/   # 자연어 전처리, 음식 데이터 정제
+│   ├── labeling/        # LLM 기반 음식 속성 라벨링
+│   ├── embedding/       # 문장·음식 임베딩
+│   ├── retrieval/       # 유사도 기반 후보 검색
+│   ├── ranking/         # 음식 속성 기반 랭킹
+│   └── recommendation/  # 전체 파이프라인 조합, Top-K 추천
+├── api/
+│   └── main.py       # 추천 API 진입점
+├── tests/            # 단위 테스트
+├── requirements.txt
+├── .gitignore
 └── README.md
 ```
 
-프런트엔드 -> 백엔드 API -> AI 추천 엔진 순서로 연결합니다. 현재는 코드 영역을 분리한 구조이며 추천 엔진을 별도 서버로 실행하지 않습니다. 백엔드는 `ai.recommender`를 import합니다. 추천 엔진은 백엔드나 실험 모듈에 의존하지 않습니다.
+개발 흐름: Notebook에서 실험 → 검증된 기능을 `src/` 모듈로 분리 → `tests/`로 검증 → `api/`에서 사용
 
-데이터 준비용 라벨링은 `ai.experiments.labeling`에 있으며 온라인 추천 요청과 분리합니다. 프런트엔드 프레임워크와 실제 HTTP API는 아직 구현되지 않았습니다.
+## Dataset
 
-## 실행
+이 프로젝트는 [공공데이터포털](https://www.data.go.kr)에서 제공하는 음식 관련 공공데이터(식품 영양성분 데이터)를 사용합니다.
 
-Python 3.11 이상을 사용하며 아래 명령은 저장소 루트에서 실행합니다.
+원본 데이터, 전처리 결과, 임베딩 결과물은 용량 및 라이선스 문제로 저장소에 포함하지 않으며 `.gitignore`로 제외됩니다.
+디렉터리 구조만 `.gitkeep` 파일로 유지됩니다.
 
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m pytest -q
-python -m backend.app.main
-jupyter notebook ai/experiments/notebooks/
+### 데이터 준비
+
+1. 공공데이터포털에서 음식 데이터 CSV를 직접 다운로드합니다.
+2. 다운로드한 CSV 파일을 `data/raw/` 아래에 배치합니다.
+
+```
+data/
+├── raw/
+│   ├── .gitkeep
+│   └── food_nutrition.csv   # 공공데이터포털에서 다운로드한 원본 CSV
+├── processed/
+│   └── .gitkeep
+└── embeddings/
+    └── .gitkeep
 ```
 
-`backend.app.main`은 현재 구조 확인 메시지만 출력합니다. 실제 서버 실행 명령은 API 구현 시 추가합니다. 노트북은 저장소 루트를 탐색해 `ai/data/`에 접근합니다. 이동 전 실행 출력은 실험 기록으로 보존돼 과거 경로가 표시될 수 있습니다.
+### 디렉터리 역할
 
-## 변경된 경로
-
-| 이전 | 현재 |
+| 디렉터리 | 역할 |
 |---|---|
-| `recommender/` | `ai/recommender/` |
-| `experiments/` | `ai/experiments/` |
-| `data/` | `ai/data/` |
-| `tests/` | `ai/tests/` |
+| `data/raw/` | 공공데이터포털에서 다운로드한 원본 데이터를 저장합니다. 원본 데이터는 수정하지 않습니다. |
+| `data/processed/` | 전처리, 정제, LLM 라벨링 등을 거친 데이터가 생성됩니다. |
+| `data/embeddings/` | 음식 데이터를 임베딩한 벡터 파일과 관련 결과물이 생성됩니다. |
 
-기존 `from recommender...`는 `from ai.recommender...`로, `from experiments...`는 `from ai.experiments...`로 변경합니다. `backend/`와 `frontend/`는 그대로 사용합니다.
+## 개발 환경 설정
 
-라벨링 작업을 이어갈 때 입력·출력 경로는 `ai/data/processed/labeling/`입니다. 기존 파일 내용과 진행 상태는 유지됩니다.
+Python 3.11 이상이 필요합니다.
 
-## 데이터와 실험
+```bash
+# 가상환경 생성 및 활성화
+python3.12 -m venv .venv
+source .venv/bin/activate
 
-원본 공공 음식 CSV는 `ai/data/raw/food_nutrition.csv`에 둡니다. 원본·정제·라벨링·임베딩 데이터는 Git에서 제외하며 `.gitkeep`으로 폴더만 유지합니다.
+# 의존성 설치
+pip install -r requirements.txt
 
-노트북은 아래 순서로 사용합니다.
+# 테스트 실행
+pytest
+```
 
-1. `01_data_analysis.ipynb`: 데이터 탐색
-2. `02_preprocessing.ipynb`: 정제·분류
-3. `03_llm_labeling.ipynb`: 속성 라벨링
-4. `04_embedding.ipynb`: 임베딩 실험
-5. `05_recommendation_test.ipynb`: 후보 검색·추천
-6. `06_evaluation.ipynb`: 성능 평가
+## Jupyter Notebook 실행
 
-검증된 추천 로직은 `ai/recommender/`에 구현하고, 영역별 테스트를 실행한 후 백엔드에 연결합니다.
+```bash
+source .venv/bin/activate
+jupyter notebook notebooks/
+```
+
+| Notebook                       | 목적                                                    |
+| ------------------------------ | ------------------------------------------------------- |
+| `01_data_analysis.ipynb`       | 공공 음식 데이터의 컬럼, 결측치, 분포 탐색              |
+| `02_preprocessing.ipynb`       | 음식 데이터 정제·전처리 실험                            |
+| `03_llm_labeling.ipynb`        | 매운맛, 국물 여부, 온도, 기름짐 등 속성 LLM 라벨링 실험 |
+| `04_embedding.ipynb`           | 음식 설명·사용자 자연어 임베딩 방법 및 모델 실험        |
+| `05_recommendation_test.ipynb` | 자연어 입력에 대한 후보 검색 및 추천 결과 확인          |
+| `06_evaluation.ipynb`          | 추천 알고리즘 성능 비교·평가                            |

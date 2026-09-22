@@ -1,2 +1,0 @@
--r experiments/requirements.txt
-pytest

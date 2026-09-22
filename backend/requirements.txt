@@ -1,2 +1,0 @@
-# 현재 API 진입점은 표준 라이브러리만 사용합니다.
--r ../ai/recommender/requirements.txt
