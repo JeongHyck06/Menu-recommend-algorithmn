@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ai.experiments.labeling import review, runner, sampling, schema, validation
-from ai.experiments.labeling.prompt import LabelingConfig, build_batch_requests, build_request_params, build_unit_input
+from src.labeling import review, runner, sampling, schema, validation
+from src.labeling.prompt import LabelingConfig, build_batch_requests, build_request_params, build_unit_input
 
 
 def _menu_frame() -> pd.DataFrame:

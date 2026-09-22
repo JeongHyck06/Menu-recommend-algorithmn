@@ -1,3 +1,7 @@
-# 전체 Python 개발 환경
--r backend/requirements.txt
--r ai/requirements.txt
+pandas
+numpy
+jupyter
+scikit-learn
+pytest
+matplotlib
+anthropic

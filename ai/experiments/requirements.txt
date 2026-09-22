@@ -1,4 +1,0 @@
--r ../recommender/requirements.txt
-jupyter
-matplotlib
-anthropic

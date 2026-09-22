@@ -25,11 +25,11 @@ env/
 .env.*
 
 # Data (원본·전처리·임베딩 데이터는 저장소에 포함하지 않음, 디렉터리는 .gitkeep으로 유지)
-ai/data/raw/*
-ai/data/processed/*
-ai/data/embeddings/*
-!ai/data/raw/.gitkeep
-!ai/data/processed/.gitkeep
-!ai/data/embeddings/.gitkeep
+data/raw/*
+data/processed/*
+data/embeddings/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/embeddings/.gitkeep
 
 CLAUDE.md
