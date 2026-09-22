@@ -5,3 +5,5 @@ scikit-learn
 pytest
 matplotlib
 anthropic
+sentence-transformers
+torch
