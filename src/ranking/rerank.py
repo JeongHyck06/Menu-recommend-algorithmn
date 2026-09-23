@@ -82,6 +82,12 @@ VARIANT_TOKENS = ("리치골드크러스트", "치즈크러스트", "골드크�
 _STRIP = re.compile(r"\([^)]*\)|[\s\-_·,./&+]+")
 
 
+def _company(record) -> str:
+    """업체명, 결과 행에서는 빈 업체명을 "-"로 표시하므로 되돌린다"""
+    value = record.get("업체명") or ""
+    return "" if value == "-" else value
+
+
 def menu_key(name) -> str:
     key = _STRIP.sub("", str(name or "")).lower()
     for token in VARIANT_TOKENS:
@@ -90,15 +96,27 @@ def menu_key(name) -> str:
 
 
 def is_duplicate(a, b) -> bool:
-    """같은 정규화 이름이거나, 같은 출처(업체명, 공공 데이터는 빈 값)에서
-    한쪽 이름이 다른 쪽의 접두어면 같은 메뉴의 변형으로 본다"""
+    """같은 메뉴의 변형인지 판정
+
+    - 정규화 이름이 같으면 업체가 달라도 같은 메뉴 ("콤비네이션 피자" / "콤비네이션피자")
+    - 같은 프랜차이즈 안에서는 띄어쓰기가 불규칙해 정규화 키의 접두어 관계로 본다 ("매운양념치킨" / "매운양념치킨반마리")
+    - 공공 데이터(업체명 없음)는 어절 단위 접두어일 때만 변형으로 본다
+      ("두부찌개" / "두부찌개 바지락"은 변형, "순대" / "순대볶음 백순대"는 다른 메뉴)
+    """
     ka, kb = menu_key(a.get("메뉴명")), menu_key(b.get("메뉴명"))
     if not ka or not kb:
         return False
     if ka == kb:
         return True
-    same_source = (a.get("업체명") or "") == (b.get("업체명") or "")
-    return same_source and (ka.startswith(kb) or kb.startswith(ka))
+    company = _company(a)
+    if company != _company(b):
+        return False
+    if company:
+        return ka.startswith(kb) or kb.startswith(ka)
+    ta = [menu_key(t) for t in str(a.get("메뉴명")).split()]
+    tb = [menu_key(t) for t in str(b.get("메뉴명")).split()]
+    n = min(len(ta), len(tb))
+    return ta[:n] == tb[:n]
 
 
 def group_of(record, key="대표식품명") -> str:
@@ -108,7 +126,7 @@ def group_of(record, key="대표식품명") -> str:
     대표식품명이 곧 메뉴명("붕어 매운탕")이라 마지막 어절("매운탕")로 묶는다
     """
     value = str(record.get(key) or "")
-    if record.get("업체명") not in (None, "", "-"):  # 결과 행에서는 빈 업체명을 "-"로 표시한다
+    if _company(record):
         return value
     tokens = value.split()
     return tokens[-1] if tokens else value

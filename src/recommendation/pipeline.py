@@ -47,6 +47,8 @@ class Recommender:
             encode_query: 문장 -> (dim,) 정규화 벡터. E5Embedder.encode_queries를 감싼 함수
             embedding_ref: 결과에 남길 임베딩 출처 (manifest_ref)
         """
+        if index.size == 0:
+            raise ValueError("비어 있는 임베딩 인덱스입니다")
         self.index = index
         self.encode_query = encode_query
         self.embedding_ref = embedding_ref or {"name": index.name}
@@ -55,6 +57,8 @@ class Recommender:
 
     def _vector(self, text):
         if text not in self._query_cache:
+            if len(self._query_cache) >= 1000:  # ponytail: 단순 상한, LRU가 필요하면 교체
+                self._query_cache.clear()
             self._query_cache[text] = self.encode_query(text)
         return self._query_cache[text]
 
@@ -81,12 +85,14 @@ class Recommender:
         result["실행시간"]["질의임베딩"] = time.perf_counter() - t0
 
         hard = parsed.hard if config.apply_filters else []
+        # 사용자가 언급한 메뉴: 대표식품명과 같거나 메뉴명 어절과 같을 때만 (부분 문자열은 쓰지 않음)
         exempt = {group_of(r, config.ranking.group_key) for r in self.index.records
-                  if any(term in (r.get("대표식품명") or "") or term in (r.get("메뉴명") or "")
+                  if any(term == (r.get("대표식품명") or "") or term in (r.get("메뉴명") or "").split()
                          for term in parsed.menu_terms)} if parsed.menu_terms else set()
         widen_for_soft = bool(parsed.soft) and config.ranking.preference_weight > 0
+        soft_limit = min(config.preference_widen_k, self.index.size)
 
-        k = min(config.candidate_k, self.index.size)
+        k = min(max(config.candidate_k, 1), self.index.size)
         while True:
             t0 = time.perf_counter()
             candidates = retrieve(self.index, query_vector, k)
@@ -100,13 +106,12 @@ class Recommender:
             result["실행시간"]["필터랭킹"] = result["실행시간"].get("필터랭킹", 0) + time.perf_counter() - t0
 
             if len(selected) < config.top_k and k < self.index.size:
-                result["확장사유"] = "필수 조건 통과 후보 부족"
-            elif (widen_for_soft and k < min(config.preference_widen_k, self.index.size)
-                  and sum(c["선호점수"] >= 1.0 for c in selected) < config.top_k):
-                result["확장사유"] = "선호 조건 일치 후보 부족"
+                result["확장사유"], limit = "필수 조건 통과 후보 부족", self.index.size
+            elif widen_for_soft and k < soft_limit and sum(c["선호점수"] >= 1.0 for c in selected) < config.top_k:
+                result["확장사유"], limit = "선호 조건 일치 후보 부족", soft_limit
             else:
                 break
-            k = min(k * 2, self.index.size)
+            k = min(k * 2, limit)
 
         drop_reasons = {}
         for d in dropped:
@@ -167,6 +172,7 @@ def result_metrics(result) -> dict:
         "필수조건수": len(hard), "선호조건수": len(soft), "조건위반수": violations, "미확인포함수": unknown,
         "선호불일치수": pref_miss, "중복메뉴수": dup, "대표식품명반복수": len(groups) - len(set(groups)),
         "메뉴군반복수": len(families) - len(set(families)),
+        "확장횟수": max(len(result["검색범위"]) - 1, 0),
         "검색범위": result["검색범위"][-1] if result["검색범위"] else 0, "필터제외": result["필터제외"],
         "실행시간초": round(result["실행시간"].get("전체", 0), 4),
     }

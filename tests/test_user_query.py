@@ -115,7 +115,37 @@ def test_menu_terms_are_recorded_without_conditions():
     parsed = parse_query("피자 먹고 싶은데 느끼하지 않은 걸로")
     assert parsed.menu_terms == ["피자"]
     assert _hard(parsed) == {"기름짐": ("낮음", "보통")}
-    assert parse_query("든든한 밥 한 끼").menu_terms == ["밥"]
+    assert parse_query("든든한 밥 한 끼").menu_terms == []  # '밥' 한 글자는 메뉴 언급으로 보지 않는다
+    assert parse_query("김밥 먹고 싶어").menu_terms == ["김밥"]
+
+
+def test_rejection_after_preference_inverts_first_condition():
+    assert _hard(parse_query("따뜻한 거 싫어")) == {"제공온도": ("상온", "차가움")}
+    assert _hard(parse_query("국물 있는 거 싫어")) == {"국물": ("국물약간", "국물없음")}
+    assert _hard(parse_query("담백한 건 별로")) == {"기름짐": ("보통", "높음")}
+    parsed = parse_query("얼큰한 거 빼고")
+    assert _hard(parsed) == {"매운맛": ("없음", "약함")}  # 둘째 조건(제공온도)은 뒤집지 않는다
+    for text in ("따뜻한 거 싫어", "국물 있는 거 싫어", "담백한 건 별로", "얼큰한 거 빼고"):
+        assert parse_query(text).soft == [], text
+
+
+def test_more_rejection_forms_and_particles():
+    for text in ("매운 걸 빼고", "매운 거 아닌 걸로", "꼭 매운 거 아닌 걸로", "매운 거 안 좋아해", "매운 거 싫고 국물은 괜찮아"):
+        assert _hard(parse_query(text)) == {"매운맛": ("없음",)}, text
+        assert "매운맛" not in _soft(parse_query(text)), text
+    assert _hard(parse_query("너무 매운 거 싫어")) == {"매운맛": ("없음", "약함", "보통")}
+    assert _hard(parse_query("국물이 없는 음식")) == {"국물": ("국물없음",)}
+    assert _hard(parse_query("국물은 없는 걸로")) == {"국물": ("국물없음",)}
+    assert "튀김" not in _hard(parse_query("튀김류는 빼고"))["조리법"]
+    assert parse_query("튀김류는 빼고").soft == []
+    assert parse_query("단순한 메뉴").soft == []
+
+
+def test_conflicting_preferences_are_dropped_and_overlapping_ones_intersect():
+    parsed = parse_query("시원하고 얼큰한 국물")
+    assert _soft(parsed) == {"매운맛": ("보통", "강함"), "국물": ("국물요리",)}
+    assert any("상충" in u["reason"] for u in parsed.unhandled)
+    assert _soft(parse_query("살짝 매운 매운 음식")) == {"매운맛": ("보통",)}
 
 
 # 강조, 병합, 모순, 빈 입력

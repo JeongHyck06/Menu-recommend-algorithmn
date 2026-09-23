@@ -73,6 +73,11 @@ def test_menu_key_and_duplicate_rules():
     assert not is_duplicate({"메뉴명": "두부찌개", "업체명": "A"}, {"메뉴명": "두부찌개 바지락", "업체명": ""})
     assert not is_duplicate({"메뉴명": "불고기 피자", "업체명": "A"}, {"메뉴명": "고구마 피자", "업체명": "A"})
     assert not is_duplicate({"메뉴명": "", "업체명": "A"}, {"메뉴명": "", "업체명": "A"})
+    # 공공 데이터는 어절 단위 접두어만 변형으로 본다
+    assert is_duplicate({"메뉴명": "냉국 미역", "업체명": ""}, {"메뉴명": "냉국 미역 오이", "업체명": ""})
+    assert not is_duplicate({"메뉴명": "순대", "업체명": ""}, {"메뉴명": "순대볶음 백순대", "업체명": ""})
+    assert not is_duplicate({"메뉴명": "두부찌개", "업체명": ""}, {"메뉴명": "굴 두부찌개", "업체명": ""})
+    assert not is_duplicate({"메뉴명": "순대", "업체명": "-"}, {"메뉴명": "순대볶음 백순대", "업체명": "-"})
 
 
 def _scored(*cands):
