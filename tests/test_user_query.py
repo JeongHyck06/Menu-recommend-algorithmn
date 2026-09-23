@@ -64,12 +64,25 @@ def test_double_negation_and_tolerance_are_unhandled():
     assert parsed.unhandled[0]["rule"] == "허용표현"
 
 
+def test_tolerance_forms_and_lookalikes():
+    for text in ("매운 거 상관없어", "매워도 돼요", "국물 없어도 돼"):
+        parsed = parse_query(text)
+        assert parsed.hard == [] and parsed.soft == [], text
+        assert parsed.unhandled[0]["rule"] == "허용표현", text
+    # "되게"는 허용 표현이 아니고, "안심"의 "안"은 부정이 아니다
+    assert _soft(parse_query("매운 것도 되게 좋아")) == {"매운맛": ("보통", "강함")}
+    assert parse_query("매운 것도 되게 좋아").unhandled == []
+    assert parse_query("안심스테이크는 싫어").unhandled == []
+
+
 def test_cool_soup_is_not_cold_temperature():
     parsed = parse_query("시원한 국물이 땡겨")
     assert "제공온도" not in _soft(parsed)
     assert _soft(parsed) == {"국물": ("국물요리",)}
     assert parsed.unhandled[0]["rule"] == "시원한국물"
     assert _soft(parse_query("상큼하고 시원한 음식")) == {"제공온도": ("차가움",)}
+    assert _soft(parse_query("시원한 국수")) == {"제공온도": ("차가움",)}
+    assert parse_query("시원한 국수").unhandled == []
 
 
 def test_unknown_taste_words_are_reported_not_guessed():
