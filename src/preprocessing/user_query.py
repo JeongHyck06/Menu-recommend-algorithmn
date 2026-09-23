@@ -38,8 +38,10 @@ CONTEXT = "context"
 
 ALL = {attr: tuple(spec["values"]) for attr, spec in LABEL_SCHEMA.items()}
 
-# 후보 뒤 조사·명사 + 거부 표현: "매운 거 싫어", "매운 음식은 빼고", "매운 건 말고"
-_REJECT = r"\s*(?:거|것|건|음식|메뉴|맛)?\s*[은는이가]?\s*(?:싫|빼|말고|못\s*먹)"
+# 표현 뒤 조사·명사 + 거부어: "매운 거 싫어", "매운 음식은 빼고", "매운 걸 아닌 걸로", "국물 있는 거 싫어"
+_REJECT = (r"\s*(?:있는|들어간)?\s*(?:걸|거|것들|것|건|음식|메뉴|맛|류)?\s*[은는이가]?\s*"
+           r"(?:싫|빼|말고|못\s*먹|아닌|안\s*좋|별로)")
+REJECT_PATTERN = re.compile(_REJECT)
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,7 @@ RULES = (
          r"\s*(?:건|것|거|게|음식|메뉴)?[은는]?\s*(?:싫|별로|안\s*좋)",
          reason="이중 부정은 방향을 확정하지 않음", example="안 매운 건 싫어"),
     Rule("허용표현", UNHANDLED,
-         r"(?:[가-힣]+\s+)?[가-힣]+\s*(?:거|것|건|음식|메뉴)?(?:도|어도|아도|여도)?\s*"
+         r"(?:(?<![가-힣])(?!싫|빼|말고|별로)[가-힣]+\s+)?[가-힣]+\s*(?:거|것|건|음식|메뉴)?(?:도|어도|아도|여도)?\s*"
          r"(?:괜찮|상관\s*없|(?:돼요?|됩니다|되(?:요|죠|지)?)(?![가-힣]))",
          reason="허용·관용 표현은 필수·선호 조건으로 확정하지 않음", example="매운 것도 괜찮아, 매워도 돼"),
     Rule("시원한국물", UNHANDLED, r"시원(?:한|하고|하게)(?=\s*(?:국물|국(?!수)|탕|찌개|해장))",
@@ -79,23 +81,24 @@ RULES = (
          reason="라벨 스키마에 없는 맛·식감, 임베딩 유사도에만 맡김", example="단짠단짠한 음식"),
 
     # 필수 조건 (부정·제외)
-    Rule("매운맛_강함제외", HARD, r"너무\s*(?:맵지\s*않|안\s*매[운워]|안\s*맵)",
-         (("매운맛", ("없음", "약함", "보통")),), example="너무 맵지 않은"),
+    Rule("매운맛_강함제외", HARD, r"너무\s*(?:맵지\s*않|안\s*매[운워]|안\s*맵|매운" + _REJECT + ")",
+         (("매운맛", ("없음", "약함", "보통")),), example="너무 맵지 않은, 너무 매운 거 싫어"),
     Rule("매운맛_제외", HARD, r"맵지\s*않|안\s*매[운워]|안\s*맵|매운" + _REJECT,
          (("매운맛", ("없음",)),), example="맵지 않은, 안 매운, 매운 거 싫어"),
-    Rule("국물_제외", HARD, r"국물\s*(?:없|안\s*(?:있|들어)|빼|말고|[은는]?\s*싫)",
-         (("국물", ("국물없음",)),), example="국물 없는, 국물 빼고"),
+    Rule("국물_제외", HARD, r"국물\s*[이은는]?\s*(?:없|안\s*(?:있|들어)|빼|말고|싫)",
+         (("국물", ("국물없음",)),), example="국물 없는, 국물이 없는, 국물 빼고"),
     Rule("뜨거움_제외", HARD, r"뜨겁지\s*않|안\s*뜨거|뜨거운" + _REJECT,
          (("제공온도", _without("제공온도", "뜨거움")),), example="뜨겁지 않은"),
     Rule("차가움_제외", HARD, r"차갑지\s*않|안\s*차가|차가운" + _REJECT,
          (("제공온도", _without("제공온도", "차가움")),), example="차갑지 않은"),
     Rule("기름짐_제외", HARD,
-         r"느끼하지\s*않|안\s*느끼|느끼한" + _REJECT + r"|기름지지\s*않|안\s*기름|기름기\s*(?:없|적)|기름진" + _REJECT,
+         r"느끼하지\s*않|안\s*느끼|느끼한" + _REJECT + r"|기름지지\s*않|안\s*기름|기름기\s*[가은는]?\s*(?:없|적)|기름진" + _REJECT,
          (("기름짐", ("낮음", "보통")),), example="느끼하지 않은, 기름기 적은"),
-    Rule("튀김_제외", HARD, r"튀기지\s*않|안\s*튀긴|튀김\s*(?:은|는|이|류)?\s*(?:말고|빼|싫|안\s*먹)",
-         (("조리법", _without("조리법", "튀김")),), example="튀김 말고"),
+    Rule("튀김_제외", HARD, r"튀기지\s*않|안\s*튀긴|튀김\s*(?:류)?\s*[은는이]?\s*(?:말고|빼|싫|안\s*먹)",
+         (("조리법", _without("조리법", "튀김")),), example="튀김 말고, 튀김류는 빼고"),
 
-    # 선호 조건 (긍정). 앞에 꼭/반드시/무조건이 붙으면 필수로 올린다
+    # 선호 조건 (긍정). 앞에 꼭/반드시/무조건이 붙으면 필수로 올리고,
+    # 뒤에 거부어("따뜻한 거 싫어")가 붙으면 첫 조건을 뒤집어 필수 제외로 만든다
     Rule("매운맛_강함", SOFT, r"(?:아주|엄청|완전|진짜|매우|겁나|많이)\s*(?:매운|매콤|맵게|얼큰)",
          (("매운맛", ("강함",)),), example="아주 매운"),
     Rule("매운맛_약함", SOFT, r"(?:살짝|약간|조금|덜)\s*(?:매운|매콤|맵게|얼큰)",
@@ -104,7 +107,7 @@ RULES = (
          (("매운맛", ("보통", "강함")), ("제공온도", ("뜨거움", "따뜻함"))), example="얼큰한 (매운 + 뜨거운)"),
     Rule("매운맛", SOFT, r"매운|매콤|맵게|맵고|매워|얼얼|화끈",
          (("매운맛", ("보통", "강함")),), example="매운, 매콤한"),
-    Rule("순한", SOFT, r"순한|순하게", (("매운맛", ("없음", "약함")),), example="순한"),
+    Rule("순한", SOFT, r"(?<![가-힣])순(?:한|하게)", (("매운맛", ("없음", "약함")),), example="순한"),
     Rule("국물", SOFT,
          r"국물|국밥|찌개|전골|해장국|국(?=[이에\s,]|$|이나|이랑|을|도)|탕(?=[이에\s,]|$|이나|이랑|을|도)",
          (("국물", ("국물요리",)),), example="국물, 국이나 찌개"),
@@ -139,7 +142,7 @@ RULES = (
 # 조건이 아니라 메뉴 종류 언급. 구간을 소비하지 않고 별도로 기록한다
 MENU_TERM_PATTERN = re.compile(
     r"피자|버거|치킨|샌드위치|토스트|핫도그|파스타|스파게티|떡볶이|김밥|라면|국수|냉면|우동|만두"
-    r"|볶음밥|비빔밥|덮밥|죽|스테이크|돈까스|돈가스|카레|짜장|짬뽕|찌개|국밥|샐러드|밥"
+    r"|볶음밥|비빔밥|덮밥|스테이크|돈까스|돈가스|카레|짜장|짬뽕|찌개|국밥|샐러드"
 )
 FORCE_PATTERN = re.compile(r"(?:꼭|반드시|무조건)\s*$")
 
@@ -198,17 +201,32 @@ def _dedup(items):
 
 
 def _merge_soft(conditions):
-    """속성과 허용값이 같은 선호는 하나로 합쳐 점수에 한 번만 반영한다"""
-    merged = {}
+    """같은 속성의 선호는 하나로 합친다
+
+    허용값이 겹치면 교집합("살짝 매운"+"매운" -> 보통), 전혀 겹치지 않으면
+    ("시원하고 얼큰한") 어느 쪽도 반영하지 않고 미처리로 기록한다
+
+    Returns:
+        (merged, dropped)
+    """
+    merged, dropped, conflicted = {}, [], set()
     for c in conditions:
-        key = (c.attribute, c.allowed)
-        if key in merged:
-            prev = merged[key]
-            merged[key] = Condition(c.attribute, c.allowed, SOFT, f"{prev.evidence}, {c.evidence}",
-                                    f"{prev.rule}, {c.rule}")
+        if c.attribute in conflicted:
+            continue
+        prev = merged.get(c.attribute)
+        if prev is None:
+            merged[c.attribute] = c
+            continue
+        common = tuple(v for v in ALL[c.attribute] if v in prev.allowed and v in c.allowed)
+        evidence, rule = f"{prev.evidence}, {c.evidence}", f"{prev.rule}, {c.rule}"
+        if common:
+            merged[c.attribute] = Condition(c.attribute, common, SOFT, evidence, rule)
         else:
-            merged[key] = c
-    return list(merged.values())
+            del merged[c.attribute]
+            conflicted.add(c.attribute)
+            dropped.append({"expression": evidence, "rule": rule,
+                            "reason": f"서로 상충하는 선호({c.attribute})는 반영하지 않음"})
+    return list(merged.values()), dropped
 
 
 def _merge_hard(conditions):
@@ -246,17 +264,27 @@ def parse_query(text) -> ParsedQuery:
             elif rule.kind == CONTEXT:
                 parsed.ignored.append({"expression": evidence, "reason": rule.reason, "rule": rule.name})
             else:
-                forced = bool(FORCE_PATTERN.search(cleaned[:m.start()]))
-                strength = HARD if rule.kind == HARD or forced else SOFT
-                for attribute, allowed in rule.conditions:
-                    cond = Condition(attribute, tuple(allowed), strength, evidence, rule.name)
+                conditions, name, end = rule.conditions, rule.name, m.end()
+                reject = REJECT_PATTERN.match(cleaned, end) if rule.kind == SOFT else None
+                if reject and not _overlaps((end, reject.end()), consumed):
+                    attribute, allowed = conditions[0]
+                    conditions, name, end = ((attribute, _without(attribute, *allowed)),), f"{rule.name}_거부", reject.end()
+                    consumed[-1] = (m.start(), end)
+                    strength = HARD
+                else:
+                    forced = bool(FORCE_PATTERN.search(cleaned[:m.start()]))
+                    strength = HARD if rule.kind == HARD or forced else SOFT
+                evidence = cleaned[m.start():end]
+                for attribute, allowed in conditions:
+                    cond = Condition(attribute, tuple(allowed), strength, evidence, name)
                     (hard if strength == HARD else parsed.soft).append(cond)
 
     parsed.menu_terms = list(dict.fromkeys(m.group(0) for m in MENU_TERM_PATTERN.finditer(cleaned)))
     parsed.unhandled = _dedup(parsed.unhandled)
     parsed.ignored = _dedup(parsed.ignored)
     parsed.hard, parsed.contradictions = _merge_hard(hard)
-    parsed.soft = _merge_soft(parsed.soft)
+    parsed.soft, conflicting = _merge_soft(parsed.soft)
+    parsed.unhandled += conflicting
 
     # 같은 속성의 선호는 필수 허용값 안으로 좁힌다. 겹치는 값이 없으면 모순이다
     hard_allowed = {c.attribute: c.allowed for c in parsed.hard}

@@ -136,6 +136,19 @@ def test_preference_shortfall_widens_search_up_to_limit():
     assert baseline["검색범위"] == [2]  # 선호 가중치 0이면 넓히지 않는다
 
 
+def test_zero_candidate_k_terminates_and_widen_limit_is_a_cap():
+    rec, _ = _recommender(FULL, candidate_k=0, top_k=2)
+    result = rec.recommend("맵지 않고 따뜻한 음식")
+    assert result["검색범위"][0] == 1 and result["반환수"] == 2
+
+    rec, _ = _recommender(FULL, candidate_k=3, top_k=2)
+    result = rec.recommend("차가운 국물 요리", PipelineConfig(top_k=2, candidate_k=3, preference_widen_k=4))
+    assert result["검색범위"] == [3, 4] and result_metrics(result)["확장횟수"] == 1
+
+    with pytest.raises(ValueError, match="비어"):
+        Recommender(CandidateIndex("empty", "B", np.zeros((0, 8), dtype=np.float32), []), FakeEncoder())
+
+
 def test_contradiction_and_empty_query_return_nothing_without_encoding():
     rec, encoder = _recommender()
     result = rec.recommend("맵지 않은 매운 음식")
@@ -167,9 +180,12 @@ def test_results_are_deterministic_and_rows_flatten():
 def test_compatibility_check_flags_model_and_source_mismatch():
     good = {"config": {"model_id": "intfloat/multilingual-e5-base",
                        "model_revision": "d128750597153bb5987e10b1c3493a34e5a4502a", "dimension": 768,
-                       "normalized": True, "query_prefix": "query: ", "document_prefix": "passage: ",
+                       "normalized": True, "pooling": "mean", "max_seq_length": 512,
+                       "query_prefix": "query: ", "document_prefix": "passage: ", "text_spec_version": "v1",
                        "source_files": {"a": "1", "b": "2"}}}
     assert check_compatibility(good, sources={"a": "1", "b": "2"}) == []
+    stale = {"config": {**good["config"], "text_spec_version": "v0"}}
+    assert any("text_spec_version" in p for p in check_compatibility(stale, sources={"a": "1", "b": "2"}))
     bad = {"config": {**good["config"], "dimension": 384, "source_files": {"a": "1", "b": "x"}}}
     problems = check_compatibility(bad, sources={"a": "1", "b": "2"})
     assert any("dimension" in p for p in problems) and any("b 해시" in p for p in problems)

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.embedding import DEFAULT_SPEC, EmbeddingStore, cosine_top_k, source_hashes
+from src.embedding import DEFAULT_SPEC, TEXT_SPEC_VERSION, EmbeddingStore, cosine_top_k, source_hashes
 
 
 @dataclass
@@ -30,7 +30,9 @@ def check_compatibility(manifest, spec=DEFAULT_SPEC, sources=None) -> list:
     cfg = manifest.get("config") or {}
     expected = {
         "model_id": spec.model_id, "model_revision": spec.revision, "dimension": spec.dimension,
-        "normalized": spec.normalize, "query_prefix": spec.query_prefix, "document_prefix": spec.document_prefix,
+        "normalized": spec.normalize, "pooling": spec.pooling, "max_seq_length": spec.max_seq_length,
+        "query_prefix": spec.query_prefix, "document_prefix": spec.document_prefix,
+        "text_spec_version": TEXT_SPEC_VERSION,
     }
     problems = [f"{k}: 저장 {cfg.get(k)!r} != 기대 {v!r}" for k, v in expected.items() if cfg.get(k) != v]
     current = sources if sources is not None else source_hashes()
