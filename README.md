@@ -22,16 +22,16 @@
 menu-recommendation/
 ├── data/
 │   ├── raw/          # 원본 공공 음식 데이터 (Git 제외)
-│   ├── processed/    # 정제·라벨링된 데이터 (Git 제외)
-│   └── embeddings/   # 생성된 임베딩 결과물 (Git 제외)
+│   ├── processed/    # 정제·라벨링된 데이터, recommendation/ 아래 추천 실험 결과 (Git 제외)
+│   └── embeddings/   # 생성된 임베딩 결과물, 결과별 vectors.npy + manifest.json (Git 제외)
 ├── notebooks/        # 실험용 Jupyter Notebook (번호 순서대로 진행)
 ├── src/
-│   ├── preprocessing/   # 자연어 전처리, 음식 데이터 정제
+│   ├── preprocessing/   # 음식 데이터 정제 (food_data), 사용자 조건 추출 규칙 파서 (user_query)
 │   ├── labeling/        # LLM 기반 음식 속성 라벨링
-│   ├── embedding/       # 문장·음식 임베딩
-│   ├── retrieval/       # 유사도 기반 후보 검색
-│   ├── ranking/         # 음식 속성 기반 랭킹
-│   └── recommendation/  # 전체 파이프라인 조합, Top-K 추천
+│   ├── embedding/       # 문장·음식 임베딩, 결과 저장·재사용 판정
+│   ├── retrieval/       # 저장된 임베딩 호환 확인, 코사인 유사도 후보 검색
+│   ├── ranking/         # 필수 조건 필터, 선호 점수 재랭킹, 중복·다양성 제어
+│   └── recommendation/  # 전체 파이프라인 조합, Top-K 추천, 비교 지표
 ├── api/
 │   └── main.py       # 추천 API 진입점
 ├── tests/            # 단위 테스트
@@ -41,6 +41,27 @@ menu-recommendation/
 ```
 
 개발 흐름: Notebook에서 실험 → 검증된 기능을 `src/` 모듈로 분리 → `tests/`로 검증 → `api/`에서 사용
+
+## 추천 파이프라인 사용 (5단계)
+
+저장된 e5-base 임베딩(`data/embeddings/`)을 manifest 해시로 확인해 로드하고, 사용자 문장만 같은 모델로 임베딩한다.
+
+```python
+from src.embedding import E5Embedder
+from src.retrieval import load_index
+from src.recommendation import Recommender
+
+index, ref = load_index("B")                       # 모델·리비전·원본 해시가 맞는 결과만 로드
+embedder = E5Embedder()
+rec = Recommender(index, lambda t: embedder.encode_queries([t])[0], ref)
+result = rec.recommend("맵지 않고 따뜻한 음식")    # 상태, 조건, 검색범위, 추천 목록(점수·근거) 포함
+```
+
+- 조건 추출은 규칙 기반이며 지원 범위는 `src/preprocessing/user_query.py`의 `RULES` 표(`support_table()`)가 전부다.
+  부정·제외 표현은 필수 조건, 긍정 표현은 선호 조건이며 '미확인' 라벨은 필수 조건을 충족하지 않는다.
+- 필수 조건 통과 후보가 부족하면 전체까지, 선호 일치 항목이 부족하면 400개까지 검색 범위를 넓힌다. 필수 조건은 완화하지 않는다.
+- 최종점수 = `similarity_weight × 유사도 + preference_weight × 선호점수`. 가중치, 메뉴군 상한, 감점은 `RankingConfig`로 바꾼다.
+- 음식 라벨은 모델 추정이므로 조건 준수 지표는 저장된 라벨 기준이며 실제 정확도가 아니다.
 
 ## Dataset
 
@@ -102,5 +123,5 @@ jupyter notebook notebooks/
 | `02_preprocessing.ipynb`       | 음식 데이터 정제·전처리 실험                            |
 | `03_llm_labeling.ipynb`        | 매운맛, 국물 여부, 온도, 기름짐 등 속성 LLM 라벨링 실험 |
 | `04_embedding.ipynb`           | 음식 설명·사용자 자연어 임베딩 방법 및 모델 실험        |
-| `05_recommendation_test.ipynb` | 자연어 입력에 대한 후보 검색 및 추천 결과 확인          |
+| `05_recommendation_test.ipynb` | 조건 추출·후보 검색·필터·재랭킹·중복 제어 비교 실험, 결과는 `data/processed/recommendation/` |
 | `06_evaluation.ipynb`          | 추천 알고리즘 성능 비교·평가                            |
