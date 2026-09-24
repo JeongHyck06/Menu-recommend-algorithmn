@@ -68,6 +68,7 @@ result = rec.recommend("맵지 않고 따뜻한 음식")    # 상태, 조건, �
 `data/processed/evaluation/judgments.csv`가 정답 세트다. 여러 설정의 상위 결과를 합친 판정 풀에 (질의, 메뉴)별 적합도(2 적합, 1 부분, 0 부적합)를 매긴다.
 현재 판정은 Claude가 메뉴명·업체명·분류만 보고 매긴 모델 추정(`검토대기`)이며, 사람이 적합도를 고치고 `검토상태`를 `승인`으로 바꾸면
 `06_evaluation.ipynb`가 승인 판정만으로 P@5, nDCG@5, MRR을 다시 계산한다. 풀에 없는 항목은 미판정으로 0 처리하고 미판정 비율을 함께 보고한다.
+설정 간 차이는 질의 단위 부트스트랩 95% 신뢰구간으로 우연 범위인지 확인한다. 평가 질의는 `data/processed/evaluation/queries.csv`에 있다 (5단계 18개 + 추가 22개).
 
 ## Dataset
 
