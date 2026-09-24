@@ -6,8 +6,9 @@ import pytest
 
 from src.recommendation import PipelineConfig
 from src.recommendation.evaluation import (
-    APPROVED, PENDING, UNJUDGED, build_pool, dcg, evaluate_configs, evaluate_result, judgment_map,
-    load_judgments, merge_pool, ndcg_at_k, precision_at_k, reciprocal_rank, save_judgments,
+    APPROVED, PENDING, UNJUDGED, build_pool, dcg, evaluate_configs, evaluate_per_query, evaluate_result,
+    judgment_map, load_judgments, merge_pool, ndcg_at_k, paired_bootstrap, precision_at_k, reciprocal_rank,
+    save_judgments, summarize,
 )
 from tests.test_recommendation import _recommender
 
@@ -61,6 +62,24 @@ def test_pool_merge_preserves_existing_judgments(tmp_path):
     reloaded = load_judgments(path)
     assert len(reloaded) == len(merged) and reloaded[0]["검토상태"] == APPROVED
     assert load_judgments(tmp_path / "missing.csv") == []
+
+
+def test_paired_bootstrap_interval_contains_zero_only_when_difference_is_noise():
+    same = paired_bootstrap([0.5, 0.6, 0.7], [0.5, 0.6, 0.7])
+    assert same["평균차이"] == 0 and same["0포함"] is True
+    better = paired_bootstrap([0.1] * 20, [0.9] * 20)
+    assert better["평균차이"] == pytest.approx(0.8) and better["하한95"] > 0 and better["0포함"] is False
+    mixed = paired_bootstrap([0.5, 0.5, 0.5, 0.5], [0.9, 0.1, 0.6, 0.4])
+    assert mixed["하한95"] <= mixed["평균차이"] <= mixed["상한95"] and mixed["0포함"] is True
+    with pytest.raises(ValueError):
+        paired_bootstrap([1.0], [1.0, 2.0])
+
+
+def test_per_query_and_summary_match_configs_table():
+    rec, _ = _recommender()
+    jmap = {("피자", "u2"): 2}
+    per_query = evaluate_per_query(rec, ["피자"], PipelineConfig(), jmap, k=3)
+    assert per_query[0]["질의"] == "피자" and summarize(per_query, 3)["P@3"] == pytest.approx(1 / 3)
 
 
 def test_evaluate_configs_reports_unjudged_ratio():
