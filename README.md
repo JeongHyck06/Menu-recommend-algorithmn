@@ -60,7 +60,8 @@ result = rec.recommend("맵지 않고 따뜻한 음식")    # 상태, 조건, �
 - 조건 추출은 규칙 기반이며 지원 범위는 `src/preprocessing/user_query.py`의 `RULES` 표(`support_table()`)가 전부다.
   부정·제외 표현은 필수 조건, 긍정 표현은 선호 조건이며 '미확인' 라벨은 필수 조건을 충족하지 않는다.
 - 필수 조건 통과 후보가 부족하면 전체까지, 선호 일치 항목이 부족하면 400개까지 검색 범위를 넓힌다. 필수 조건은 완화하지 않는다.
-- 최종점수 = `similarity_weight × 유사도 + preference_weight × 선호점수`. 가중치, 메뉴군 상한, 감점은 `RankingConfig`로 바꾼다.
+- 최종점수 = `similarity_weight × 유사도 + preference_weight × 선호점수 + menu_match_weight × 메뉴일치`. 가중치, 메뉴군 상한, 감점은 `RankingConfig`로 바꾼다.
+- "치킨", "면"처럼 메뉴 종류를 말하면 그 메뉴군은 상한을 면제하고 가점(기본 0.15)을 받는다. "피자 말고"처럼 제외한 메뉴는 걸러낸다.
 - 음식 라벨은 모델 추정이므로 조건 준수 지표는 저장된 라벨 기준이며 실제 정확도가 아니다.
 
 ## 평가 (6단계)
