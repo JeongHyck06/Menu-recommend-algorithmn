@@ -9,6 +9,7 @@
 
 import csv
 import math
+import random
 from dataclasses import replace
 from pathlib import Path
 
@@ -119,18 +120,39 @@ def evaluate_result(result, jmap, k) -> dict:
     }
 
 
+def evaluate_per_query(rec, queries, config, jmap, k=5) -> list:
+    """설정 하나에 대한 질의별 지표"""
+    return [evaluate_result(rec.recommend(q, replace(config, top_k=k)), jmap, k) for q in queries]
+
+
+def summarize(per_query, k=5) -> dict:
+    n = len(per_query) or 1
+    return {
+        "질의수": len(per_query),
+        f"P@{k}": sum(r[f"P@{k}"] for r in per_query) / n,
+        f"nDCG@{k}": sum(r[f"nDCG@{k}"] for r in per_query) / n,
+        "MRR": sum(r["RR"] for r in per_query) / n,
+        "미판정비율": sum(r["미판정수"] for r in per_query) / max(sum(r["반환수"] for r in per_query), 1),
+    }
+
+
 def evaluate_configs(recommenders, queries, configs, jmap, k=5) -> list:
     """추천기(이름->Recommender) × 설정(이름->PipelineConfig)별 평균 지표"""
-    rows = []
-    for rec_name, rec in recommenders.items():
-        for cfg_name, config in configs.items():
-            per_query = [evaluate_result(rec.recommend(q, replace(config, top_k=k)), jmap, k) for q in queries]
-            n = len(per_query) or 1
-            rows.append({
-                "텍스트구성": rec_name, "설정": cfg_name, "질의수": len(per_query),
-                f"P@{k}": sum(r[f"P@{k}"] for r in per_query) / n,
-                f"nDCG@{k}": sum(r[f"nDCG@{k}"] for r in per_query) / n,
-                "MRR": sum(r["RR"] for r in per_query) / n,
-                "미판정비율": sum(r["미판정수"] for r in per_query) / max(sum(r["반환수"] for r in per_query), 1),
-            })
-    return rows
+    return [
+        {"텍스트구성": rec_name, "설정": cfg_name, **summarize(evaluate_per_query(rec, queries, config, jmap, k), k)}
+        for rec_name, rec in recommenders.items()
+        for cfg_name, config in configs.items()
+    ]
+
+
+def paired_bootstrap(values_a, values_b, iterations=2000, seed=0) -> dict:
+    """질의별 지표 두 벌의 평균 차이(b − a)와 95% 부트스트랩 신뢰구간, 질의를 복원 추출한다"""
+    if len(values_a) != len(values_b) or not values_a:
+        raise ValueError("길이가 같은 비어 있지 않은 두 목록이 필요합니다")
+    diffs = [b - a for a, b in zip(values_a, values_b)]
+    rng = random.Random(seed)
+    n = len(diffs)
+    means = sorted(sum(rng.choice(diffs) for _ in range(n)) / n for _ in range(iterations))
+    lo, hi = means[int(0.025 * iterations)], means[int(0.975 * iterations) - 1]
+    return {"평균차이": sum(diffs) / n, "하한95": lo, "상한95": hi, "질의수": n,
+            "0포함": lo <= 0 <= hi}
