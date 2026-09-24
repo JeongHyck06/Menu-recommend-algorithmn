@@ -137,7 +137,7 @@ def summarize(per_query, k=5) -> dict:
 
 
 def evaluate_configs(recommenders, queries, configs, jmap, k=5) -> list:
-    """추천기(이름->Recommender) × 설정(이름->PipelineConfig)별 평균 지표"""
+    """추천기(이름->Recommender) x 설정(이름->PipelineConfig)별 평균 지표"""
     return [
         {"텍스트구성": rec_name, "설정": cfg_name, **summarize(evaluate_per_query(rec, queries, config, jmap, k), k)}
         for rec_name, rec in recommenders.items()
