@@ -111,6 +111,17 @@ def test_light_maps_only_to_fullness_label():
     assert parsed.attributes <= set(LABEL_SCHEMA)
 
 
+def test_menu_exclusions_are_separated_from_mentions():
+    parsed = parse_query("피자 말고 버거")
+    assert parsed.menu_terms == ["버거"] and [e["term"] for e in parsed.menu_exclusions] == ["피자"]
+    assert parsed.hard == [] and parsed.soft == []
+    assert [e["term"] for e in parse_query("치킨은 빼고 가볍게").menu_exclusions] == ["치킨"]
+    assert [e["term"] for e in parse_query("라면 아닌 면").menu_exclusions] == ["라면"]
+    assert parse_query("라면 아닌 면").menu_terms == ["면"]
+    assert parse_query("차가운 면 요리").menu_terms == ["면"]
+    assert parse_query("떡볶이 매운 거").menu_exclusions == []
+
+
 def test_menu_terms_are_recorded_without_conditions():
     parsed = parse_query("피자 먹고 싶은데 느끼하지 않은 걸로")
     assert parsed.menu_terms == ["피자"]
@@ -195,4 +206,4 @@ def test_support_table_covers_every_rule_and_schema_values():
 def test_to_dict_is_json_friendly():
     d = parse_query("맵지 않고 따뜻한 음식").to_dict()
     assert d["hard"][0]["allowed"] == ("없음",) and d["text"] == "맵지 않고 따뜻한 음식"
-    assert set(d) == {"text", "hard", "soft", "menu_terms", "unhandled", "ignored", "contradictions"}
+    assert set(d) == {"text", "hard", "soft", "menu_terms", "menu_exclusions", "unhandled", "ignored", "contradictions"}

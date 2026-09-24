@@ -13,7 +13,10 @@ from dataclasses import asdict, dataclass, field
 
 from src.labeling.schema import UNKNOWN
 from src.preprocessing import parse_query
-from src.ranking import RankingConfig, apply_hard_filters, group_of, is_duplicate, score_candidates, select_top_k
+from src.ranking import (
+    RankingConfig, apply_hard_filters, apply_menu_exclusions, group_of, is_duplicate, mentions, score_candidates,
+    select_top_k,
+)
 from src.retrieval import CandidateIndex, retrieve
 
 STATUS_OK = "ok"
@@ -33,9 +36,11 @@ class PipelineConfig:
 
 # 비교 실험용 사전 설정. preference_weight=0이면 선호 재랭킹과 선호 부족 확장이 모두 꺼진다
 EMBEDDING_ONLY = PipelineConfig(apply_filters=False, ranking=RankingConfig(
-    similarity_weight=1.0, preference_weight=0.0, group_cap=0, group_penalty=0.0, collapse_duplicates=False))
+    similarity_weight=1.0, preference_weight=0.0, menu_match_weight=0.0, group_cap=0, group_penalty=0.0,
+    collapse_duplicates=False))
 FILTER_ONLY = PipelineConfig(apply_filters=True, ranking=RankingConfig(
-    similarity_weight=1.0, preference_weight=0.0, group_cap=0, group_penalty=0.0, collapse_duplicates=False))
+    similarity_weight=1.0, preference_weight=0.0, menu_match_weight=0.0, group_cap=0, group_penalty=0.0,
+    collapse_duplicates=False))
 FULL = PipelineConfig()
 
 
@@ -85,10 +90,10 @@ class Recommender:
         result["실행시간"]["질의임베딩"] = time.perf_counter() - t0
 
         hard = parsed.hard if config.apply_filters else []
-        # 사용자가 언급한 메뉴: 대표식품명과 같거나 메뉴명 어절과 같을 때만 (부분 문자열은 쓰지 않음)
+        excluded_menus = [e["term"] for e in parsed.menu_exclusions] if config.apply_filters else []
+        # 사용자가 언급한 메뉴의 메뉴군은 상한을 면제한다 (대표식품명·메뉴명 어절·대분류 어절 일치, 부분 문자열은 쓰지 않음)
         exempt = {group_of(r, config.ranking.group_key) for r in self.index.records
-                  if any(term == (r.get("대표식품명") or "") or term in (r.get("메뉴명") or "").split()
-                         for term in parsed.menu_terms)} if parsed.menu_terms else set()
+                  if any(mentions(r, term) for term in parsed.menu_terms)} if parsed.menu_terms else set()
         widen_for_soft = bool(parsed.soft) and config.ranking.preference_weight > 0
         soft_limit = min(config.preference_widen_k, self.index.size)
 
@@ -101,7 +106,9 @@ class Recommender:
 
             t0 = time.perf_counter()
             kept, dropped = apply_hard_filters(candidates, hard)
-            scored = score_candidates(kept, parsed.soft, config.ranking)
+            kept, dropped_menu = apply_menu_exclusions(kept, excluded_menus)
+            dropped += dropped_menu
+            scored = score_candidates(kept, parsed.soft, config.ranking, parsed.menu_terms)
             selected, skipped = select_top_k(scored, config.top_k, config.ranking, exempt)
             result["실행시간"]["필터랭킹"] = result["실행시간"].get("필터랭킹", 0) + time.perf_counter() - t0
 
@@ -144,6 +151,8 @@ class Recommender:
         basis += [f"선호 {m['attribute']}={m['value']} 일치({m['evidence']})" for m in cand["선호일치"]]
         basis += [f"선호 {m['attribute']}={m['value']} 불일치({m['evidence']})" for m in cand["선호불일치"]]
         basis += [f"선호 {m['attribute']} 미확인({m['evidence']})" for m in cand["선호미확인"]]
+        if cand.get("메뉴일치"):
+            basis.append(f"언급 메뉴 {cand['메뉴일치']} 일치 가점")
         return {
             "순위": rank, "라벨링단위ID": record["라벨링단위ID"], "메뉴명": record["메뉴명"],
             "업체명": record.get("업체명") or "-", "대표식품명": record.get("대표식품명"),
@@ -162,6 +171,7 @@ def result_metrics(result) -> dict:
     items = result["추천"]
     value = lambda it, c: it["라벨"].get(c["attribute"]) or UNKNOWN
     violations = sum(1 for it in items for c in hard if value(it, c) not in c["allowed"])
+    violations += sum(1 for it in items for e in cond["menu_exclusions"] if mentions(it, e["term"]))
     unknown = sum(1 for it in items if any(value(it, c) == UNKNOWN for c in [*hard, *soft]))
     pref_miss = sum(1 for it in items for c in soft if value(it, c) not in c["allowed"] and value(it, c) != UNKNOWN)
     dup = sum(1 for i, a in enumerate(items) if any(is_duplicate(a, b) for b in items[:i]))

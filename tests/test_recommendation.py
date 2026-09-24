@@ -50,6 +50,7 @@ QUERY_SIMS = {
     "차가운 국물 요리": [0.9, 0.85, 0.3, 0.3, 0.3, 0.3, 0.4, 0.8],
     "맵지 않은 매운 음식": [0.5] * 8,
     "피자": [0.1, 0.1, 0.9, 0.89, 0.88, 0.87, 0.2, 0.2],
+    "피자 말고 김밥": [0.1, 0.1, 0.9, 0.89, 0.88, 0.87, 0.6, 0.2],
 }
 
 
@@ -117,7 +118,7 @@ def test_reranking_prefers_matching_preferences_over_similarity():
     result = rec.recommend("차가운 국물 요리")
     assert _ids(result)[0] == "u7"
     top = result["추천"][0]
-    assert top["선호점수"] == 1.0 and abs(top["최종점수"] - (0.7 * top["유사도"] + 0.3)) < 1e-3
+    assert top["선호점수"] == 1.0 and abs(top["최종점수"] - (0.7 * top["유사도"] + 0.3)) < 1e-3  # 메뉴 언급 없음
     assert "선호 제공온도=차가움 일치(차가운)" in top["추천근거"] and "유사도" in top["추천근거"]
 
 
@@ -166,6 +167,18 @@ def test_mentioned_menu_is_exempt_from_group_cap():
     pizza = rec.recommend("피자")
     assert [it["대표식품명"] for it in pizza["추천"]] == ["피자", "피자", "피자"]
     assert "u3" not in _ids(pizza)  # 브랜드만 다른 같은 메뉴는 여전히 중복 제거
+
+
+def test_menu_exclusion_filters_and_counts_violations():
+    rec, _ = _recommender(top_k=2, candidate_k=8)
+    result = rec.recommend("피자 말고 김밥")
+    assert [it["대표식품명"] for it in result["추천"]] == ["김밥", "냉면"]
+    assert result["필터제외사유"] == {"메뉴=피자": 4}
+    assert result_metrics(result)["조건위반수"] == 0
+
+    baseline = rec.recommend("피자 말고 김밥", dataclasses.replace(EMBEDDING_ONLY, top_k=2))
+    assert baseline["추천"][0]["대표식품명"] == "피자"
+    assert result_metrics(baseline)["조건위반수"] == 2
 
 
 def test_results_are_deterministic_and_rows_flatten():

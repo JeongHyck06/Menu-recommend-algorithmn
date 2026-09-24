@@ -15,14 +15,39 @@ from src.labeling.schema import UNKNOWN
 class RankingConfig:
     similarity_weight: float = 0.7
     preference_weight: float = 0.3
+    menu_match_weight: float = 0.15  # 사용자가 언급한 메뉴와 일치하면 더하는 가점 (6단계 평가로 채택), 0이면 사용 안 함
     group_key: str = "대표식품명"
     group_cap: int = 2            # Top-K 안에서 같은 그룹 최대 수, 0이면 제한 없음
     group_penalty: float = 0.0    # 이미 선택된 같은 그룹 수 × 감점
     collapse_duplicates: bool = True
 
 
-# 최종 점수 = similarity_weight × 유사도 + preference_weight × 선호점수
+# 최종 점수 = similarity_weight × 유사도 + preference_weight × 선호점수 + menu_match_weight × 메뉴일치(0/1)
 # ponytail: 유사도는 원값(0.8~0.9 대역)이라 선호 가중치가 사실상 우선한다, 정규화가 필요하면 후보 내 min-max 추가
+
+
+def mentions(record, term) -> bool:
+    """사용자가 말한 메뉴 종류가 이 항목을 가리키는지, 대표식품명·메뉴명 어절·식품대분류명 어절과 그대로 대조한다"""
+    return (term == (record.get("대표식품명") or "")
+            or term in (record.get("메뉴명") or "").split()
+            or term in (record.get("식품대분류명") or "").split())
+
+
+def apply_menu_exclusions(candidates, terms) -> tuple:
+    """제외한 메뉴 종류("피자 말고")에 해당하는 후보 제거
+
+    Returns:
+        (kept, dropped) dropped 항목에는 apply_hard_filters와 같은 형식의 "제외사유"가 붙는다
+    """
+    kept, dropped = [], []
+    for cand in candidates:
+        hit = next((t for t in terms if mentions(cand["record"], t)), None)
+        if hit is None:
+            kept.append(cand)
+        else:
+            dropped.append({**cand, "제외사유": [{"attribute": "메뉴", "value": hit, "allowed": [],
+                                                "evidence": f"{hit} 제외", "unknown": False}]})
+    return kept, dropped
 
 
 def apply_hard_filters(candidates, hard) -> tuple:
@@ -64,13 +89,15 @@ def preference_score(labels, soft) -> dict:
     return {"score": score, "matched": matched, "unmatched": unmatched, "unknown": unknown}
 
 
-def score_candidates(candidates, soft, config: RankingConfig) -> list:
-    """유사도·선호점수·최종점수 계산 후 결정적 정렬 (최종점수, 유사도 내림차순, ID 오름차순)"""
+def score_candidates(candidates, soft, config: RankingConfig, menu_terms=()) -> list:
+    """유사도·선호점수·메뉴일치·최종점수 계산 후 결정적 정렬 (최종점수, 유사도 내림차순, ID 오름차순)"""
     scored = []
     for cand in candidates:
         pref = preference_score(cand["record"].get("라벨"), soft)
-        final = config.similarity_weight * cand["유사도"] + config.preference_weight * pref["score"]
-        scored.append({**cand, "선호점수": pref["score"], "최종점수": final,
+        menu_hit = next((t for t in menu_terms if mentions(cand["record"], t)), None) if config.menu_match_weight else None
+        final = (config.similarity_weight * cand["유사도"] + config.preference_weight * pref["score"]
+                 + (config.menu_match_weight if menu_hit else 0.0))
+        scored.append({**cand, "선호점수": pref["score"], "메뉴일치": menu_hit, "최종점수": final,
                        "선호일치": pref["matched"], "선호불일치": pref["unmatched"], "선호미확인": pref["unknown"]})
     scored.sort(key=lambda c: (-round(c["최종점수"], 9), -round(c["유사도"], 9), c["record"]["라벨링단위ID"]))
     return scored
