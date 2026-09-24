@@ -51,12 +51,13 @@ from src.embedding import E5Embedder
 from src.retrieval import load_index
 from src.recommendation import Recommender
 
-index, ref = load_index("B")                       # 모델·리비전·원본 해시가 맞는 결과만 로드
+index, ref = load_index("B")                       # 모델·리비전·원본 해시가 맞는 결과만 로드, 프랜차이즈 항목 제외
 embedder = E5Embedder()
 rec = Recommender(index, lambda t: embedder.encode_queries([t])[0], ref)
 result = rec.recommend("맵지 않고 따뜻한 음식")    # 상태, 조건, 검색범위, 추천 목록(점수·근거) 포함
 ```
 
+- 추천 후보는 업체명이 없는 공공 데이터 항목(1,123건)이다. 프랜차이즈 메뉴는 추천 대상에서 제외한다. `load_index(..., include_franchise=True)`로 되돌릴 수 있다.
 - 조건 추출은 규칙 기반이며 지원 범위는 `src/preprocessing/user_query.py`의 `RULES` 표(`support_table()`)가 전부다.
   부정·제외 표현은 필수 조건, 긍정 표현은 선호 조건이며 '미확인' 라벨은 필수 조건을 충족하지 않는다.
 - 필수 조건 통과 후보가 부족하면 전체까지, 선호 일치 항목이 부족하면 400개까지 검색 범위를 넓힌다. 필수 조건은 완화하지 않는다.
