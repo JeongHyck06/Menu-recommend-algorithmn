@@ -187,8 +187,8 @@ class ParsedQuery:
         return asdict(self)
 
     def summary(self) -> str:
-        parts = [f"필수 {c.attribute}∈{'/'.join(c.allowed)}({c.evidence})" for c in self.hard]
-        parts += [f"선호 {c.attribute}∈{'/'.join(c.allowed)}({c.evidence})" for c in self.soft]
+        parts = [f"필수 {c.attribute}={'/'.join(c.allowed)} ({c.evidence})" for c in self.hard]
+        parts += [f"선호 {c.attribute}={'/'.join(c.allowed)} ({c.evidence})" for c in self.soft]
         parts += [f"메뉴 제외 {e['term']}({e['evidence']})" for e in self.menu_exclusions]
         parts += [f"미처리 '{u['expression']}'" for u in self.unhandled]
         parts += [f"모순 {c['attribute']}" for c in self.contradictions]
@@ -323,7 +323,7 @@ def support_table() -> list:
     for rule in RULES:
         rows.append({
             "종류": rule.kind, "규칙": rule.name, "예시": rule.example,
-            "조건": "; ".join(f"{a}∈{'/'.join(v)}" for a, v in rule.conditions) or "-",
+            "조건": "; ".join(f"{a}={'/'.join(v)}" for a, v in rule.conditions) or "-",
             "비고": rule.reason or "-",
         })
     return rows

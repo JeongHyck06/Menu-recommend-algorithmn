@@ -18,11 +18,11 @@ class RankingConfig:
     menu_match_weight: float = 0.15  # 사용자가 언급한 메뉴와 일치하면 더하는 가점 (6단계 평가로 채택), 0이면 사용 안 함
     group_key: str = "대표식품명"
     group_cap: int = 2            # Top-K 안에서 같은 그룹 최대 수, 0이면 제한 없음
-    group_penalty: float = 0.0    # 이미 선택된 같은 그룹 수 × 감점
+    group_penalty: float = 0.0    # 이미 선택된 같은 그룹 수 x 감점
     collapse_duplicates: bool = True
 
 
-# 최종 점수 = similarity_weight × 유사도 + preference_weight × 선호점수 + menu_match_weight × 메뉴일치(0/1)
+# 최종 점수 = similarity_weight x 유사도 + preference_weight x 선호점수 + menu_match_weight x 메뉴일치(0/1)
 # ponytail: 유사도는 원값(0.8~0.9 대역)이라 선호 가중치가 사실상 우선한다, 정규화가 필요하면 후보 내 min-max 추가
 
 
