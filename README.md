@@ -134,3 +134,4 @@ jupyter notebook notebooks/
 | `04_embedding.ipynb`           | 음식 설명·사용자 자연어 임베딩 방법 및 모델 실험        |
 | `05_recommendation_test.ipynb` | 조건 추출·후보 검색·필터·재랭킹·중복 제어 비교 실험, 결과는 `data/processed/recommendation/` |
 | `06_evaluation.ipynb`          | 판정 풀·판정 시트 관리, 설정별 P@5·nDCG@5·MRR 비교, 결과는 `data/processed/evaluation/` |
+| `07_try_recommendation.ipynb`  | 사용용. 준비 셀 실행 후 `show("문장")`으로 추천 결과와 근거 확인, 맨 위 설정에서 개수·텍스트 구성·프랜차이즈 포함 변경 |
