@@ -6,11 +6,11 @@
 """
 
 from .rerank import (
-    RankingConfig, apply_hard_filters, group_of, is_duplicate, menu_key, preference_score, score_candidates,
-    select_top_k,
+    RankingConfig, apply_hard_filters, apply_menu_exclusions, group_of, is_duplicate, mentions, menu_key,
+    preference_score, score_candidates, select_top_k,
 )
 
 __all__ = [
-    "RankingConfig", "apply_hard_filters", "group_of", "is_duplicate", "menu_key", "preference_score",
-    "score_candidates", "select_top_k",
+    "RankingConfig", "apply_hard_filters", "apply_menu_exclusions", "group_of", "is_duplicate", "mentions",
+    "menu_key", "preference_score", "score_candidates", "select_top_k",
 ]

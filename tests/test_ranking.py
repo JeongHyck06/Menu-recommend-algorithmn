@@ -2,10 +2,12 @@
 
 import random
 
+import pytest
+
 from src.preprocessing import HARD, SOFT, Condition
 from src.ranking import (
-    RankingConfig, apply_hard_filters, group_of, is_duplicate, menu_key, preference_score, score_candidates,
-    select_top_k,
+    RankingConfig, apply_hard_filters, apply_menu_exclusions, group_of, is_duplicate, mentions, menu_key,
+    preference_score, score_candidates, select_top_k,
 )
 
 
@@ -119,6 +121,32 @@ def test_select_caps_unbranded_menu_family():
     selected, skipped = select_top_k(scored, 3, RankingConfig(group_cap=2))
     assert [c["record"]["라벨링단위ID"] for c in selected] == ["t1", "t2", "k1"]
     assert skipped[0]["제외사유"] == "대표식품명 상한(2): 매운탕"
+
+
+def test_mentions_uses_whole_tokens_and_category():
+    rec = {"대표식품명": "닭튀김", "메뉴명": "매운 양념 치킨", "식품대분류명": "튀김류"}
+    assert mentions(rec, "치킨") and not mentions(rec, "치")
+    assert mentions({"대표식품명": "피자", "메뉴명": "콤비네이션피자", "식품대분류명": "빵 및 과자류"}, "피자")
+    assert not mentions({"대표식품명": "비빔밥", "메뉴명": "육회비빔밥", "식품대분류명": "밥류"}, "밥")
+    assert mentions({"대표식품명": "국수", "메뉴명": "잔치국수", "식품대분류명": "면 및 만두류"}, "면")
+
+
+def test_menu_exclusions_drop_matching_candidates_with_reason():
+    cands = [_cand("p", "콤비네이션 피자", "피자", "A"), _cand("b", "치즈 버거", "버거", "B")]
+    kept, dropped = apply_menu_exclusions(cands, ["피자"])
+    assert [c["record"]["라벨링단위ID"] for c in kept] == ["b"]
+    assert dropped[0]["제외사유"][0] == {"attribute": "메뉴", "value": "피자", "allowed": [], "evidence": "피자 제외", "unknown": False}
+    assert apply_menu_exclusions(cands, [])[1] == []
+
+
+def test_menu_match_bonus_only_when_weight_set():
+    cands = [_cand("p", "콤비네이션 피자", "피자", "A", sim=0.90), _cand("n", "잔치국수", "국수", "", sim=0.85)]
+    cands[1]["record"]["식품대분류명"] = "면 및 만두류"
+    plain = score_candidates(cands, [], RankingConfig(menu_match_weight=0.0), menu_terms=["면"])
+    assert [c["record"]["라벨링단위ID"] for c in plain] == ["p", "n"] and plain[0]["메뉴일치"] is None
+    boosted = score_candidates(cands, [], RankingConfig(menu_match_weight=0.3), menu_terms=["면"])
+    assert [c["record"]["라벨링단위ID"] for c in boosted] == ["n", "p"] and boosted[0]["메뉴일치"] == "면"
+    assert boosted[0]["최종점수"] == pytest.approx(0.7 * 0.85 + 0.3)
 
 
 def test_group_penalty_promotes_other_groups():

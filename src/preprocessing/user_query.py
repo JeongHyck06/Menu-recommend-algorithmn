@@ -21,6 +21,10 @@
 무시하는 맥락 (ignored로 기록)
 - 날씨, 기분, 시간대는 필수 조건으로 바꾸지 않는다. 임베딩 유사도에만 남는다.
 
+메뉴 언급
+- "피자", "치킨", "면"처럼 메뉴 종류를 말하면 menu_terms에 기록한다. 조건이 아니며 랭킹에서 상한 면제·가점에 쓴다.
+- "피자 말고", "치킨은 빼고"처럼 메뉴를 제외하면 menu_exclusions에 기록하고 그 메뉴는 필수 제외한다.
+
 해석하지 않는 것
 - "가벼운"은 저장된 든든함 라벨 '가벼움'에만 대응하며 칼로리로 해석하지 않는다.
 - 재료 데이터가 없으므로 알레르기·채식 표현은 조건으로 만들지 않는다.
@@ -140,10 +144,14 @@ RULES = (
 )
 
 # 조건이 아니라 메뉴 종류 언급. 구간을 소비하지 않고 별도로 기록한다
-MENU_TERM_PATTERN = re.compile(
-    r"피자|버거|치킨|샌드위치|토스트|핫도그|파스타|스파게티|떡볶이|김밥|라면|국수|냉면|우동|만두"
+# 대표식품명·메뉴명 어절·식품대분류명 어절과 그대로 대조하므로 부분 문자열("밥")은 넣지 않는다
+MENU_TERMS = (
+    r"피자|버거|치킨|샌드위치|토스트|핫도그|파스타|스파게티|떡볶이|김밥|라면|국수|냉면|우동|만두|면"
     r"|볶음밥|비빔밥|덮밥|스테이크|돈까스|돈가스|카레|짜장|짬뽕|찌개|국밥|샐러드"
 )
+MENU_TERM_PATTERN = re.compile(MENU_TERMS)
+# 메뉴 제외: "피자 말고", "치킨은 빼고", "피자 아닌" -> 그 메뉴를 필수 제외한다
+MENU_EXCLUDE_PATTERN = re.compile(rf"({MENU_TERMS})\s*(?:류)?\s*[은는이가]?\s*(?:말고|빼고|빼|싫|아닌|제외|안\s*먹)")
 FORCE_PATTERN = re.compile(r"(?:꼭|반드시|무조건)\s*$")
 
 
@@ -162,6 +170,7 @@ class ParsedQuery:
     hard: list = field(default_factory=list)
     soft: list = field(default_factory=list)
     menu_terms: list = field(default_factory=list)
+    menu_exclusions: list = field(default_factory=list)
     unhandled: list = field(default_factory=list)
     ignored: list = field(default_factory=list)
     contradictions: list = field(default_factory=list)
@@ -180,6 +189,7 @@ class ParsedQuery:
     def summary(self) -> str:
         parts = [f"필수 {c.attribute}∈{'/'.join(c.allowed)}({c.evidence})" for c in self.hard]
         parts += [f"선호 {c.attribute}∈{'/'.join(c.allowed)}({c.evidence})" for c in self.soft]
+        parts += [f"메뉴 제외 {e['term']}({e['evidence']})" for e in self.menu_exclusions]
         parts += [f"미처리 '{u['expression']}'" for u in self.unhandled]
         parts += [f"모순 {c['attribute']}" for c in self.contradictions]
         return " | ".join(parts) or "조건 없음"
@@ -279,7 +289,11 @@ def parse_query(text) -> ParsedQuery:
                     cond = Condition(attribute, tuple(allowed), strength, evidence, name)
                     (hard if strength == HARD else parsed.soft).append(cond)
 
-    parsed.menu_terms = list(dict.fromkeys(m.group(0) for m in MENU_TERM_PATTERN.finditer(cleaned)))
+    exclusions = list(MENU_EXCLUDE_PATTERN.finditer(cleaned))
+    parsed.menu_exclusions = [{"term": m.group(1), "evidence": m.group(0)} for m in exclusions]
+    excluded_spans = [m.span() for m in exclusions]
+    parsed.menu_terms = list(dict.fromkeys(
+        m.group(0) for m in MENU_TERM_PATTERN.finditer(cleaned) if not _overlaps(m.span(), excluded_spans)))
     parsed.unhandled = _dedup(parsed.unhandled)
     parsed.ignored = _dedup(parsed.ignored)
     parsed.hard, parsed.contradictions = _merge_hard(hard)
