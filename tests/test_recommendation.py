@@ -10,7 +10,8 @@ from src.recommendation import (
     EMBEDDING_ONLY, FILTER_ONLY, FULL, STATUS_CONTRADICTION, STATUS_EMPTY_QUERY, STATUS_OK, STATUS_SHORTAGE,
     PipelineConfig, Recommender, result_metrics, result_rows,
 )
-from src.retrieval import CandidateIndex, check_compatibility
+from src.embedding import DEFAULT_SPEC, TEXT_SPEC_VERSION, EmbeddingStore, build_config, compute_input_hash
+from src.retrieval import CandidateIndex, check_compatibility, is_franchise, load_index
 
 
 def _record(uid, menu, rep, company="", **labels):
@@ -202,6 +203,27 @@ def test_compatibility_check_flags_model_and_source_mismatch():
     bad = {"config": {**good["config"], "dimension": 384, "source_files": {"a": "1", "b": "x"}}}
     problems = check_compatibility(bad, sources={"a": "1", "b": "2"})
     assert any("dimension" in p for p in problems) and any("b 해시" in p for p in problems)
+
+
+def test_load_index_excludes_franchise_by_default(tmp_path):
+    store = EmbeddingStore(tmp_path)
+    records = [{"라벨링단위ID": "u1", "메뉴명": "콤비네이션 피자", "업체명": "A피자"},
+               {"라벨링단위ID": "u2", "메뉴명": "육개장", "업체명": ""},
+               {"라벨링단위ID": "u3", "메뉴명": "김밥", "업체명": "-"}]
+    vectors = np.eye(3, dtype=np.float32)[:, :3].copy()
+    vectors = np.pad(vectors, ((0, 0), (0, 765))).astype(np.float32)
+    config = build_config(DEFAULT_SPEC.as_dict(), "B", TEXT_SPEC_VERSION,
+                          compute_input_hash(["u1", "u2", "u3"], ["a", "b", "c"]), {"f": "h"})
+    from src.embedding import result_name
+    store.save(result_name(config), vectors, records, config)
+
+    index, ref = load_index("B", store, sources={"f": "h"})
+    assert [r["라벨링단위ID"] for r in index.records] == ["u2", "u3"] and index.vectors.shape == (2, 768)
+    assert ref["후보범위"] == {"프랜차이즈포함": False, "후보수": 2, "전체수": 3}
+    assert not is_franchise(records[2])  # "-"는 빈 업체명
+
+    full, ref = load_index("B", store, sources={"f": "h"}, include_franchise=True)
+    assert full.size == 3 and ref["후보범위"]["프랜차이즈포함"] is True
 
 
 def test_pipeline_config_is_serialisable():
