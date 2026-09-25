@@ -92,8 +92,9 @@ class Recommender:
         hard = parsed.hard if config.apply_filters else []
         excluded_menus = [e["term"] for e in parsed.menu_exclusions] if config.apply_filters else []
         # 사용자가 언급한 메뉴의 메뉴군은 상한을 면제한다 (대표식품명·메뉴명 어절·대분류 어절 일치, 부분 문자열은 쓰지 않음)
+        boost_terms = parsed.menu_terms + [c["term"] for c in parsed.context_terms if c["term"] not in parsed.menu_terms]
         exempt = {group_of(r, config.ranking.group_key) for r in self.index.records
-                  if any(mentions(r, term) for term in parsed.menu_terms)} if parsed.menu_terms else set()
+                  if any(mentions(r, term) for term in boost_terms)} if boost_terms else set()
         widen_for_soft = bool(parsed.soft) and config.ranking.preference_weight > 0
         soft_limit = min(config.preference_widen_k, self.index.size)
 
@@ -108,7 +109,7 @@ class Recommender:
             kept, dropped = apply_hard_filters(candidates, hard)
             kept, dropped_menu = apply_menu_exclusions(kept, excluded_menus)
             dropped += dropped_menu
-            scored = score_candidates(kept, parsed.soft, config.ranking, parsed.menu_terms)
+            scored = score_candidates(kept, parsed.soft, config.ranking, boost_terms)
             selected, skipped = select_top_k(scored, config.top_k, config.ranking, exempt)
             result["실행시간"]["필터랭킹"] = result["실행시간"].get("필터랭킹", 0) + time.perf_counter() - t0
 
@@ -156,7 +157,7 @@ class Recommender:
         return {
             "순위": rank, "라벨링단위ID": record["라벨링단위ID"], "메뉴명": record["메뉴명"],
             "업체명": record.get("업체명") or "-", "대표식품명": record.get("대표식품명"),
-            "식품대분류명": record.get("식품대분류명"),
+            "식품대분류명": record.get("식품대분류명"), "계열": labels.get("계열"),
             "주요라벨": ", ".join(record.get("속성토큰") or []) or "-", "라벨": labels,
             "유사도": round(cand["유사도"], 4), "선호점수": round(cand["선호점수"], 4),
             "최종점수": round(cand["최종점수"], 4), "추천근거": " / ".join(basis),

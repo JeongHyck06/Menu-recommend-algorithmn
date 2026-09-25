@@ -207,23 +207,26 @@ def test_compatibility_check_flags_model_and_source_mismatch():
 
 def test_load_index_excludes_franchise_by_default(tmp_path):
     store = EmbeddingStore(tmp_path)
-    records = [{"라벨링단위ID": "u1", "메뉴명": "콤비네이션 피자", "업체명": "A피자"},
-               {"라벨링단위ID": "u2", "메뉴명": "육개장", "업체명": ""},
-               {"라벨링단위ID": "u3", "메뉴명": "김밥", "업체명": "-"}]
-    vectors = np.eye(3, dtype=np.float32)[:, :3].copy()
-    vectors = np.pad(vectors, ((0, 0), (0, 765))).astype(np.float32)
+    records = [{"라벨링단위ID": "u1", "메뉴명": "콤비네이션 피자", "대표식품명": "피자", "업체명": "A피자"},
+               {"라벨링단위ID": "u2", "메뉴명": "육개장", "대표식품명": "육개장", "업체명": ""},
+               {"라벨링단위ID": "u3", "메뉴명": "김밥", "대표식품명": "김밥", "업체명": "-"},
+               {"라벨링단위ID": "u4", "메뉴명": "쌀밥", "대표식품명": "쌀밥", "업체명": ""}]
+    vectors = np.pad(np.eye(4, dtype=np.float32), ((0, 0), (0, 764))).astype(np.float32)
     config = build_config(DEFAULT_SPEC.as_dict(), "B", TEXT_SPEC_VERSION,
-                          compute_input_hash(["u1", "u2", "u3"], ["a", "b", "c"]), {"f": "h"})
+                          compute_input_hash(["u1", "u2", "u3", "u4"], ["a", "b", "c", "d"]), {"f": "h"})
     from src.embedding import result_name
     store.save(result_name(config), vectors, records, config)
 
-    index, ref = load_index("B", store, sources={"f": "h"})
+    index, ref = load_index("B", store, sources={"f": "h"}, cuisine_labels={"u2": {"계열": "한식", "안주": "아니오"}})
     assert [r["라벨링단위ID"] for r in index.records] == ["u2", "u3"] and index.vectors.shape == (2, 768)
-    assert ref["후보범위"] == {"프랜차이즈포함": False, "후보수": 2, "전체수": 3}
+    assert ref["후보범위"]["후보수"] == 2 and ref["후보범위"]["전체수"] == 4 and ref["후보범위"]["맨밥포함"] is False
+    assert index.records[0]["라벨"]["계열"] == "한식" and index.records[0]["계열출처"] == "채팅 라벨"
+    assert index.records[1]["라벨"]["계열"] == "분식" and index.records[1]["계열출처"] == "키워드 규칙"
     assert not is_franchise(records[2])  # "-"는 빈 업체명
 
-    full, ref = load_index("B", store, sources={"f": "h"}, include_franchise=True)
-    assert full.size == 3 and ref["후보범위"]["프랜차이즈포함"] is True
+    full, ref = load_index("B", store, sources={"f": "h"}, include_franchise=True, include_staples=True, cuisine_labels={})
+    assert full.size == 4 and ref["후보범위"]["프랜차이즈포함"] is True
+    assert full.records[0]["라벨"]["계열"] == "양식" and "양식" in full.records[0]["속성토큰"]
 
 
 def test_pipeline_config_is_serialisable():

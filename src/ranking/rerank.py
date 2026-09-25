@@ -26,11 +26,16 @@ class RankingConfig:
 # ponytail: 유사도는 원값(0.8~0.9 대역)이라 선호 가중치가 사실상 우선한다, 정규화가 필요하면 후보 내 min-max 추가
 
 
+# 사용자 표현 -> 식품대분류명
+CATEGORY_ALIASES = {"밥": "밥류", "면": "면 및 만두류", "죽": "죽 및 스프류", "전": "전·적 및 부침류", "부침개": "전·적 및 부침류"}
+
+
 def mentions(record, term) -> bool:
-    """사용자가 말한 메뉴 종류가 이 항목을 가리키는지, 대표식품명·메뉴명 어절·식품대분류명 어절과 그대로 대조한다"""
-    return (term == (record.get("대표식품명") or "")
-            or term in (record.get("메뉴명") or "").split()
-            or term in (record.get("식품대분류명") or "").split())
+    """사용자가 말한 메뉴 종류가 이 항목을 가리키는지, 대표식품명·식품대분류명·메뉴명 어절과 그대로 대조한다"""
+    term = CATEGORY_ALIASES.get(term, term)
+    category = record.get("식품대분류명") or ""
+    return (term == (record.get("대표식품명") or "") or term == category
+            or term in (record.get("메뉴명") or "").split() or term in category.split())
 
 
 def apply_menu_exclusions(candidates, terms) -> tuple:

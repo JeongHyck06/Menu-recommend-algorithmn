@@ -2,7 +2,7 @@
 
 from src.labeling.schema import LABEL_SCHEMA, UNKNOWN
 from src.preprocessing import HARD, SOFT, parse_query, support_table
-from src.preprocessing.user_query import RULES
+from src.preprocessing.user_query import ALL, RULES
 
 
 def _hard(parsed):
@@ -95,7 +95,8 @@ def test_unknown_taste_words_are_reported_not_guessed():
 
 def test_weather_mood_and_time_are_ignored_not_constraints():
     parsed = parse_query("비 오는 날 우울해서 저녁에 얼큰한 국물")
-    assert {i["rule"] for i in parsed.ignored} == {"날씨", "기분", "시간"}
+    assert {i["rule"] for i in parsed.ignored} == {"날씨_비", "기분", "시간"}
+    assert [c["term"] for c in parsed.context_terms] == ["전·적 및 부침류", "칼국수", "수제비"]
     assert parsed.hard == []
     assert _soft(parsed) == {"매운맛": ("보통", "강함"), "제공온도": ("뜨거움", "따뜻함"), "국물": ("국물요리",)}
 
@@ -122,11 +123,23 @@ def test_menu_exclusions_are_separated_from_mentions():
     assert parse_query("떡볶이 매운 거").menu_exclusions == []
 
 
+def test_cuisine_anju_rice_and_weather_rules():
+    assert _soft(parse_query("한식 위주로")) == {"계열": ("한식",)}
+    assert _hard(parse_query("중식 말고")) == {"계열": ("한식", "일식", "양식", "동남아", "분식")}
+    assert _soft(parse_query("맥주랑 먹을 안주")) == {"안주": ("예",)}
+    parsed = parse_query("밥 먹고 싶어")
+    assert _soft(parsed) == {"계열": ("한식",)} and parsed.menu_terms == ["밥"]
+    assert parse_query("김밥 먹고 싶어").soft == [] and parse_query("김밥 먹고 싶어").menu_terms == ["김밥"]
+    assert parse_query("비 오는 날 전 부쳐 먹고 싶다").menu_terms == ["전"]
+    assert [c["term"] for c in parse_query("추운 날").context_terms] == ["국 및 탕류", "찌개 및 전골류"]
+    assert parse_query("더워서 시원한 거").context_terms[0]["term"] == "냉면"
+
+
 def test_menu_terms_are_recorded_without_conditions():
     parsed = parse_query("피자 먹고 싶은데 느끼하지 않은 걸로")
     assert parsed.menu_terms == ["피자"]
     assert _hard(parsed) == {"기름짐": ("낮음", "보통")}
-    assert parse_query("든든한 밥 한 끼").menu_terms == []  # '밥' 한 글자는 메뉴 언급으로 보지 않는다
+    assert parse_query("든든한 밥 한 끼").menu_terms == ["밥"]  # 단독 '밥'은 밥류 언급
     assert parse_query("김밥 먹고 싶어").menu_terms == ["김밥"]
 
 
@@ -200,10 +213,11 @@ def test_support_table_covers_every_rule_and_schema_values():
     assert all(r["예시"] for r in rows)
     for rule in RULES:
         for attribute, allowed in rule.conditions:
-            assert set(allowed) <= set(LABEL_SCHEMA[attribute]["values"])
+            assert set(allowed) <= set(ALL[attribute])
 
 
 def test_to_dict_is_json_friendly():
     d = parse_query("맵지 않고 따뜻한 음식").to_dict()
     assert d["hard"][0]["allowed"] == ("없음",) and d["text"] == "맵지 않고 따뜻한 음식"
-    assert set(d) == {"text", "hard", "soft", "menu_terms", "menu_exclusions", "unhandled", "ignored", "contradictions"}
+    assert set(d) == {"text", "hard", "soft", "menu_terms", "menu_exclusions", "context_terms", "unhandled", "ignored",
+                      "contradictions"}
