@@ -1,0 +1,52 @@
+name: Deploy AI to home server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: muckzi-ai
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test
+        run: |
+          pip install pytest pandas numpy fastapi
+          pytest -q tests/test_api.py tests/test_user_query.py
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/home-deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/home-deploy ~/.ssh/known_hosts
+
+      - name: Upload source and deploy
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '2222' }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'jack' }}
+        run: |
+          git archive HEAD | ssh -i ~/.ssh/home-deploy -o BatchMode=yes -o IdentitiesOnly=yes -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            'set -e; cd ~/apps/muckzi; rm -rf ai; mkdir ai; tar -x -C ai; ai/deploy.sh'
+
+      - name: Remove SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/home-deploy ~/.ssh/known_hosts
