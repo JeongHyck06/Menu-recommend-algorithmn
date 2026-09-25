@@ -1,5 +1,5 @@
 from api.feedback import FeedbackStore
-from api.finetune import training_examples
+from api.finetune import better, is_test_query, training_examples, unique_batches
 from api.main import pick_menus
 
 
@@ -35,10 +35,13 @@ def test_pick_menus_reorders_by_feedback():
     assert [m["keyword"] for m in pick_menus(items, 2)] == ["우동", "라면"]
 
 
-def test_training_examples_maps_keyword_to_menu_text():
+def test_training_examples_maps_keyword_and_skips_test_queries():
     records = [{"대표식품명": "라면", "메뉴명": "라면 라면만", "embedding_text": "라면 국물요리"},
                {"대표식품명": "라면", "메뉴명": "라면 해물", "embedding_text": "해물 라면"}]
-    assert training_examples([("얼큰한 라면", "라면"), ("피자", "피자")], records) == [("얼큰한 라면", "라면 국물요리")]
+    train_q = next(q for q in ("얼큰한 라면", "라면 먹고 싶어", "매운 라면", "라면 한 그릇") if not is_test_query(q))
+    test_q = next(q for q in ("얼큰한 라면", "라면 먹고 싶어", "매운 라면", "라면 한 그릇") if is_test_query(q))
+    pairs = [(train_q, "라면"), (test_q, "라면"), ("피자", "피자")]
+    assert training_examples(pairs, records) == [(train_q, "라면 국물요리")]
 
 
 def test_chosen_counts_double_and_migrates_old_table(tmp_path):
@@ -54,3 +57,17 @@ def test_chosen_counts_double_and_migrates_old_table(tmp_path):
     assert store.counts[("라면", "라면")] == [2, 0]
     assert store.counts[("라면", "우동")] == [1, 0]
     assert store.boost("라면", "라면") > store.boost("라면", "우동")
+
+
+def test_swap_needs_clear_gain_without_recall_drop():
+    old = {"ndcg": 0.776, "recall": 0.439}
+    assert not better({"ndcg": 0.779, "recall": 0.408}, old)
+    assert not better({"ndcg": 0.780, "recall": 0.45}, old)
+    assert better({"ndcg": 0.79, "recall": 0.439}, old)
+
+
+def test_unique_batches_never_repeat_query_or_menu():
+    ex = [("a", "1"), ("a", "2"), ("b", "1"), ("b", "3"), ("c", "4")]
+    batches = unique_batches(ex, 16)
+    assert sorted(x for b in batches for x in b) == sorted(ex)
+    assert all(len({q for q, _ in b}) == len(b) == len({d for _, d in b}) for b in batches)
