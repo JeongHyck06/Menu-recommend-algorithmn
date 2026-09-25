@@ -1,0 +1,31 @@
+name: muckzi-ai
+services:
+  ai:
+    build: .
+    image: muckzi-ai
+    container_name: muckzi-ai
+    restart: unless-stopped
+    ports: ["127.0.0.1:18091:8000"]
+    environment:
+      STATE_DIR: /app/state
+      FINETUNE_INTERVAL: "86400"
+    volumes:
+      - ../ai-data:/app/data:ro
+      - hf-cache:/cache
+      - state:/app/state
+    networks: [muckzi]
+    mem_limit: 6g
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+networks:
+  muckzi: {external: true}
+volumes:
+  hf-cache:
+  state:
