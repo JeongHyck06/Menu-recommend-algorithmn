@@ -160,3 +160,14 @@ def test_group_penalty_promotes_other_groups():
     assert [c["record"]["라벨링단위ID"] for c in selected] == ["p1", "s1"]
     selected, _ = select_top_k(scored, 2, RankingConfig(group_cap=0, group_penalty=0.0))
     assert [c["record"]["라벨링단위ID"] for c in selected] == ["p1", "p2"]
+
+
+def test_context_bonus_is_weaker_and_not_added_on_top_of_menu_bonus():
+    cands = [_cand("p", "콤비네이션 피자", "피자", "A", sim=0.90), _cand("n", "잔치국수", "국수", "", sim=0.85)]
+    cands[1]["record"]["식품대분류명"] = "면 및 만두류"
+    config = RankingConfig(menu_match_weight=0.3, context_match_weight=0.05)
+    weak = score_candidates(cands, [], config, context_terms=["면"])
+    assert [c["record"]["라벨링단위ID"] for c in weak] == ["n", "p"]
+    assert weak[0]["최종점수"] == pytest.approx(0.7 * 0.85 + 0.05)
+    both = score_candidates(cands, [], config, menu_terms=["면"], context_terms=["면"])
+    assert both[0]["최종점수"] == pytest.approx(0.7 * 0.85 + 0.3)

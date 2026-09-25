@@ -15,14 +15,15 @@ from src.labeling.schema import UNKNOWN
 class RankingConfig:
     similarity_weight: float = 0.7
     preference_weight: float = 0.3
-    menu_match_weight: float = 0.15  # 사용자가 언급한 메뉴와 일치하면 더하는 가점 (6단계 평가로 채택), 0이면 사용 안 함
+    menu_match_weight: float = 0.3   # 사용자가 언급한 메뉴와 일치하면 더하는 가점 (승인 판정 평가로 0.15에서 상향), 0이면 사용 안 함
+    context_match_weight: float = 0.05  # 날씨 등 맥락이 연상한 메뉴 가점, 명시 조건을 이기지 않게 작게 둔다. 언급 메뉴 가점과 겹치면 큰 쪽만
     group_key: str = "대표식품명"
     group_cap: int = 2            # Top-K 안에서 같은 그룹 최대 수, 0이면 제한 없음
     group_penalty: float = 0.0    # 이미 선택된 같은 그룹 수 x 감점
     collapse_duplicates: bool = True
 
 
-# 최종 점수 = similarity_weight x 유사도 + preference_weight x 선호점수 + menu_match_weight x 메뉴일치(0/1)
+# 최종 점수 = similarity_weight x 유사도 + preference_weight x 선호점수 + (menu_match_weight x 메뉴일치 또는 context_match_weight x 연상일치)
 # ponytail: 유사도는 원값(0.8~0.9 대역)이라 선호 가중치가 사실상 우선한다, 정규화가 필요하면 후보 내 min-max 추가
 
 
@@ -94,14 +95,16 @@ def preference_score(labels, soft) -> dict:
     return {"score": score, "matched": matched, "unmatched": unmatched, "unknown": unknown}
 
 
-def score_candidates(candidates, soft, config: RankingConfig, menu_terms=()) -> list:
+def score_candidates(candidates, soft, config: RankingConfig, menu_terms=(), context_terms=()) -> list:
     """유사도·선호점수·메뉴일치·최종점수 계산 후 결정적 정렬 (최종점수, 유사도 내림차순, ID 오름차순)"""
     scored = []
     for cand in candidates:
         pref = preference_score(cand["record"].get("라벨"), soft)
-        menu_hit = next((t for t in menu_terms if mentions(cand["record"], t)), None) if config.menu_match_weight else None
-        final = (config.similarity_weight * cand["유사도"] + config.preference_weight * pref["score"]
-                 + (config.menu_match_weight if menu_hit else 0.0))
+        hit = lambda terms, weight: next((t for t in terms if mentions(cand["record"], t)), None) if weight else None
+        menu_hit, context_hit = hit(menu_terms, config.menu_match_weight), hit(context_terms, config.context_match_weight)
+        bonus = max(config.menu_match_weight if menu_hit else 0.0, config.context_match_weight if context_hit else 0.0)
+        final = config.similarity_weight * cand["유사도"] + config.preference_weight * pref["score"] + bonus
+        menu_hit = menu_hit or context_hit
         scored.append({**cand, "선호점수": pref["score"], "메뉴일치": menu_hit, "최종점수": final,
                        "선호일치": pref["matched"], "선호불일치": pref["unmatched"], "선호미확인": pref["unknown"]})
     scored.sort(key=lambda c: (-round(c["최종점수"], 9), -round(c["유사도"], 9), c["record"]["라벨링단위ID"]))
