@@ -34,3 +34,4 @@ data/embeddings/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/embeddings/.gitkeep
+state/

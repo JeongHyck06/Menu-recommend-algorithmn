@@ -1,14 +1,23 @@
 """메뉴 추천 API
 
 POST /parse      문장 -> 그룹별 태그 (맛, 메뉴, 상황)
-POST /recommend  문장 -> Top-K 메뉴
+POST /recommend  문장 -> Top-K 메뉴, 피드백 가점 반영
+POST /feedback   추천 결과 좋아요·별로예요 저장
+
+하루에 한 번 별도 프로세스로 api.finetune을 돌리고 모델이 바뀌면 다시 불러온다
 """
 
+import os
+import subprocess
+import sys
+import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from api.feedback import FeedbackStore
 from src.preprocessing import parse_query
 from src.recommendation import PipelineConfig
 
@@ -34,30 +43,42 @@ def extract_tags(text: str) -> list:
     return unique
 
 
-def pick_menus(items: list, limit: int) -> list:
-    """대표식품명이 같은 메뉴는 같은 검색어가 되므로 첫 항목만 남긴다"""
+def pick_menus(items: list, limit: int, boost=lambda keyword: 0.0) -> list:
+    """피드백 가점을 더해 다시 정렬하고, 대표식품명이 같은 메뉴는 같은 검색어가 되므로 첫 항목만 남긴다"""
+    keyed = [(it["대표식품명"] or it["메뉴명"], it) for it in items]
+    scored = sorted(((it["최종점수"] + boost(k), k, it) for k, it in keyed), key=lambda x: -x[0])
     menus, seen = [], set()
-    for it in items:
-        keyword = it["대표식품명"] or it["메뉴명"]
+    for score, keyword, it in scored:
         if keyword in seen:
             continue
         seen.add(keyword)
         menus.append({"keyword": keyword, "name": it["메뉴명"], "category": it["식품대분류명"],
-                      "cuisine": it["계열"], "score": it["최종점수"], "labels": it["주요라벨"]})
+                      "cuisine": it["계열"], "score": round(score, 4), "labels": it["주요라벨"]})
         if len(menus) == limit:
             break
     return menus
 
 
+def retrain_loop(interval: int):
+    from api.finetune import load_active, read_current
+
+    while True:
+        time.sleep(interval)
+        run = subprocess.run([sys.executable, "-m", "api.finetune"], capture_output=True, text=True)
+        print("finetune", run.returncode, run.stdout[-500:], run.stderr[-500:], flush=True)
+        if read_current().get("dir", "base") != state["model"]:
+            state["rec"], state["model"] = load_active()
+
+
 @asynccontextmanager
 async def lifespan(_app):
-    from src.embedding import E5Embedder
-    from src.recommendation import Recommender
-    from src.retrieval import load_index
+    from api.finetune import load_active
 
-    index, ref = load_index("B")
-    embedder = E5Embedder()
-    state["rec"] = Recommender(index, lambda t: embedder.encode_queries([t])[0], ref)
+    state["feedback"] = FeedbackStore()
+    state["rec"], state["model"] = load_active()
+    interval = int(os.environ.get("FINETUNE_INTERVAL", "0"))
+    if interval:
+        threading.Thread(target=retrain_loop, args=(interval,), daemon=True).start()
     yield
 
 
@@ -69,9 +90,23 @@ class TextIn(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
+class FeedbackIn(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    keyword: str = Field(min_length=1, max_length=50)
+    menu: str = Field(default="", max_length=100)
+    place_id: str = Field(default="", max_length=30)
+    liked: bool
+
+
 @app.get("/health")
 def health():
-    return {"ok": "rec" in state}
+    return {"ok": "rec" in state, "model": state.get("model"), "feedback": state["feedback"].size()}
+
+
+@app.post("/feedback")
+def feedback(body: FeedbackIn):
+    state["feedback"].add(body.query.strip(), body.keyword, body.menu, body.place_id, body.liked)
+    return {"ok": True}
 
 
 @app.post("/parse")
@@ -82,4 +117,5 @@ def parse(body: TextIn):
 @app.post("/recommend")
 def recommend(body: TextIn):
     result = state["rec"].recommend(body.text, PipelineConfig(top_k=body.limit * 3))
-    return {"status": result["상태"], "reason": result["사유"], "menus": pick_menus(result["추천"], body.limit)}
+    boost = lambda keyword: state["feedback"].boost(body.text, keyword)
+    return {"status": result["상태"], "reason": result["사유"], "menus": pick_menus(result["추천"], body.limit, boost)}

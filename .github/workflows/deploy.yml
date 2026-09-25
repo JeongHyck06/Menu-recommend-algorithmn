@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: |
           pip install pytest pandas numpy fastapi
-          pytest -q tests/test_api.py tests/test_user_query.py
+          pytest -q tests/test_api.py tests/test_feedback.py tests/test_user_query.py
 
       - name: Configure SSH
         env:
