@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.embedding import DEFAULT_SPEC, TEXT_SPEC_VERSION, EmbeddingStore, cosine_top_k, source_hashes
+from src.preprocessing.cuisine import enrich, is_staple, load_cuisine_labels
 
 
 @dataclass
@@ -80,11 +81,14 @@ def find_result_name(store, text_variant, spec=DEFAULT_SPEC) -> str:
     return names[0]
 
 
-def load_index(text_variant, store=None, spec=DEFAULT_SPEC, sources=None, include_franchise=False) -> tuple:
-    """호환 검사를 통과한 벡터·records 로드
+def load_index(text_variant, store=None, spec=DEFAULT_SPEC, sources=None, include_franchise=False,
+               include_staples=False, cuisine_labels=None) -> tuple:
+    """호환 검사를 통과한 벡터·records 로드. records에 계열·안주 추정값을 붙인다
 
     Args:
         include_franchise: False면 업체명이 있는 프랜차이즈 항목을 후보에서 뺀다
+        include_staples: False면 쌀밥·잡곡밥 같은 맨밥을 후보에서 뺀다
+        cuisine_labels: 채팅 라벨링 결과, None이면 기본 경로의 파일을 읽고 없으면 키워드 규칙만 쓴다
 
     Returns:
         (CandidateIndex, manifest_ref) manifest_ref에 후보 범위를 함께 남긴다
@@ -95,11 +99,16 @@ def load_index(text_variant, store=None, spec=DEFAULT_SPEC, sources=None, includ
     problems = check_compatibility(manifest, spec, sources)
     if problems:
         raise ValueError(f"{name}은 현재 데이터·규격과 호환되지 않습니다: " + "; ".join(problems))
-    index = CandidateIndex(name, text_variant, vectors, manifest["records"])
+    labels = load_cuisine_labels() if cuisine_labels is None else cuisine_labels
+    records = [enrich(r, labels) for r in manifest["records"]]
+    index = CandidateIndex(name, text_variant, vectors, records)
     if not include_franchise:
         index = index.subset(lambda r: not is_franchise(r))
+    if not include_staples:
+        index = index.subset(lambda r: not is_staple(r))
     ref = manifest_ref(manifest)
-    ref["후보범위"] = {"프랜차이즈포함": include_franchise, "후보수": index.size, "전체수": len(manifest["records"])}
+    ref["후보범위"] = {"프랜차이즈포함": include_franchise, "맨밥포함": include_staples, "후보수": index.size,
+                   "전체수": len(manifest["records"]), "계열라벨": f"채팅 {len(labels)}건, 나머지 키워드 규칙"}
     return index, ref
 
 

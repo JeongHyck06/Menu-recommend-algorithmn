@@ -24,6 +24,9 @@
 메뉴 언급
 - "피자", "치킨", "면"처럼 메뉴 종류를 말하면 menu_terms에 기록한다. 조건이 아니며 랭킹에서 상한 면제·가점에 쓴다.
 - "피자 말고", "치킨은 빼고"처럼 메뉴를 제외하면 menu_exclusions에 기록하고 그 메뉴는 필수 제외한다.
+- "밥"을 단독으로 말하면 밥류 언급과 한식 선호로 해석한다. 맨밥은 후보에서 빠진다.
+- 날씨는 조건이 아니지만 연상 메뉴(비: 전·칼국수·수제비, 추움: 국·찌개, 더움: 냉면·냉국)에 가점을 준다.
+- 계열(한식/중식/일식/양식/동남아/분식)과 안주는 원본에 없는 추정값이며 선호 조건으로만 쓴다.
 
 해석하지 않는 것
 - "가벼운"은 저장된 든든함 라벨 '가벼움'에만 대응하며 칼로리로 해석하지 않는다.
@@ -34,6 +37,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from src.labeling.schema import LABEL_SCHEMA, UNKNOWN
+from src.preprocessing.cuisine import ANJU_NO, ANJU_YES, CUISINES
 
 HARD = "hard"
 SOFT = "soft"
@@ -41,6 +45,9 @@ UNHANDLED = "unhandled"
 CONTEXT = "context"
 
 ALL = {attr: tuple(spec["values"]) for attr, spec in LABEL_SCHEMA.items()}
+ALL["계열"] = CUISINES          # 키워드 규칙 또는 채팅 라벨로 붙인 추정값 (src/preprocessing/cuisine.py)
+ALL["안주"] = (ANJU_YES, ANJU_NO)
+_STANDALONE_RICE = r"(?<![가-힣])밥(?=\s|$|[을이도만,.!?]|으로|이나|이랑)"
 
 # 표현 뒤 조사·명사 + 거부어: "매운 거 싫어", "매운 음식은 빼고", "매운 걸 아닌 걸로", "국물 있는 거 싫어"
 _REJECT = (r"\s*(?:있는|들어간)?\s*(?:걸|거|것들|것|건|음식|메뉴|맛|류)?\s*[은는이가]?\s*"
@@ -56,6 +63,7 @@ class Rule:
     conditions: tuple = ()  # ((속성, 허용값 튜플), ...)
     reason: str = ""
     example: str = ""
+    associations: tuple = ()  # 맥락 규칙이 연상하는 메뉴·분류, 선호 가점에만 쓴다
 
     @property
     def regex(self):
@@ -133,10 +141,23 @@ RULES = (
     Rule("찜", SOFT, r"찜|찐", (("조리법", ("찜",)),), example="찜"),
     Rule("조림", SOFT, r"조림", (("조리법", ("조림",)),), example="조림"),
     Rule("끓임", SOFT, r"끓인|끓여", (("조리법", ("끓임",)),), example="끓인"),
+    Rule("계열_한식", SOFT, r"한식|한국\s*음식|우리\s*음식", (("계열", ("한식",)),), example="한식 위주로"),
+    Rule("계열_중식", SOFT, r"중식|중국\s*음식|중국집", (("계열", ("중식",)),), example="중식, 중국집"),
+    Rule("계열_일식", SOFT, r"일식|일본\s*음식|일본식", (("계열", ("일식",)),), example="일식"),
+    Rule("계열_양식", SOFT, r"양식|서양\s*음식", (("계열", ("양식",)),), example="양식"),
+    Rule("계열_동남아", SOFT, r"동남아|베트남|태국", (("계열", ("동남아",)),), example="베트남 음식"),
+    Rule("계열_분식", SOFT, r"분식", (("계열", ("분식",)),), example="분식"),
+    Rule("안주", SOFT, r"안주|술\s*마시|술이랑|맥주|소주|막걸리", (("안주", (ANJU_YES,)),), example="술안주, 맥주랑"),
+    Rule("밥_한식", SOFT, _STANDALONE_RICE, (("계열", ("한식",)),), example="밥 먹고 싶어 (밥은 한식 밥류로 해석)"),
 
     # 맥락: 기록만 하고 조건으로 쓰지 않는다
-    Rule("날씨", CONTEXT, r"비\s*(?:오|와|가)|장마|눈\s*(?:오|와)|날씨|쌀쌀|추운|추워|춥|더운|더워|덥|습한|꿉꿉",
-         reason="날씨는 필수 조건으로 쓰지 않음, 임베딩 유사도에만 반영", example="비 오는 날"),
+    Rule("날씨_비", CONTEXT, r"비\s*(?:오|와|가)|장마|비오는", reason="날씨는 필수 조건이 아님, 연상 메뉴에 가점만",
+         example="비 오는 날", associations=("전·적 및 부침류", "칼국수", "수제비")),
+    Rule("날씨_추움", CONTEXT, r"눈\s*(?:오|와)|쌀쌀|추운|추워|춥", reason="날씨는 필수 조건이 아님, 연상 메뉴에 가점만",
+         example="추운 날", associations=("국 및 탕류", "찌개 및 전골류")),
+    Rule("날씨_더움", CONTEXT, r"더운|더워|덥|습한|꿉꿉|폭염", reason="날씨는 필수 조건이 아님, 연상 메뉴에 가점만",
+         example="더운 날", associations=("냉면", "냉국", "콩국수")),
+    Rule("날씨", CONTEXT, r"날씨", reason="날씨는 필수 조건으로 쓰지 않음, 임베딩 유사도에만 반영", example="날씨 좋은 날"),
     Rule("기분", CONTEXT, r"기분|우울|피곤|힘든|힘들|스트레스|지친",
          reason="기분은 필수 조건으로 쓰지 않음, 임베딩 유사도에만 반영", example="우울할 때"),
     Rule("시간", CONTEXT, r"아침|점심|저녁|야식|주말|혼밥",
@@ -147,7 +168,8 @@ RULES = (
 # 대표식품명·메뉴명 어절·식품대분류명 어절과 그대로 대조하므로 부분 문자열("밥")은 넣지 않는다
 MENU_TERMS = (
     r"피자|버거|치킨|샌드위치|토스트|핫도그|파스타|스파게티|떡볶이|김밥|라면|국수|냉면|우동|만두|면"
-    r"|볶음밥|비빔밥|덮밥|스테이크|돈까스|돈가스|카레|짜장|짬뽕|찌개|국밥|샐러드"
+    r"|볶음밥|비빔밥|덮밥|스테이크|돈까스|돈가스|카레|짜장|짬뽕|찌개|국밥|샐러드|부침개|수제비|칼국수"
+    rf"|전(?=\s|$|[을이도만,.!?]|이나|이랑|하고)|(?<![가-힣])죽(?=\s|$|[을이도만,.!?]|이나|이랑)|{_STANDALONE_RICE}"
 )
 MENU_TERM_PATTERN = re.compile(MENU_TERMS)
 # 메뉴 제외: "피자 말고", "치킨은 빼고", "피자 아닌" -> 그 메뉴를 필수 제외한다
@@ -171,6 +193,7 @@ class ParsedQuery:
     soft: list = field(default_factory=list)
     menu_terms: list = field(default_factory=list)
     menu_exclusions: list = field(default_factory=list)
+    context_terms: list = field(default_factory=list)
     unhandled: list = field(default_factory=list)
     ignored: list = field(default_factory=list)
     contradictions: list = field(default_factory=list)
@@ -190,6 +213,7 @@ class ParsedQuery:
         parts = [f"필수 {c.attribute}={'/'.join(c.allowed)} ({c.evidence})" for c in self.hard]
         parts += [f"선호 {c.attribute}={'/'.join(c.allowed)} ({c.evidence})" for c in self.soft]
         parts += [f"메뉴 제외 {e['term']}({e['evidence']})" for e in self.menu_exclusions]
+        parts += [f"연상 {c['term']}({c['evidence']})" for c in self.context_terms]
         parts += [f"미처리 '{u['expression']}'" for u in self.unhandled]
         parts += [f"모순 {c['attribute']}" for c in self.contradictions]
         return " | ".join(parts) or "조건 없음"
@@ -273,6 +297,7 @@ def parse_query(text) -> ParsedQuery:
                 parsed.unhandled.append({"expression": evidence, "reason": rule.reason, "rule": rule.name})
             elif rule.kind == CONTEXT:
                 parsed.ignored.append({"expression": evidence, "reason": rule.reason, "rule": rule.name})
+                parsed.context_terms += [{"term": t, "evidence": evidence} for t in rule.associations]
             else:
                 conditions, name, end = rule.conditions, rule.name, m.end()
                 reject = REJECT_PATTERN.match(cleaned, end) if rule.kind == SOFT else None

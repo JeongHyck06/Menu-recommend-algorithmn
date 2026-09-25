@@ -127,8 +127,12 @@ def test_mentions_uses_whole_tokens_and_category():
     rec = {"대표식품명": "닭튀김", "메뉴명": "매운 양념 치킨", "식품대분류명": "튀김류"}
     assert mentions(rec, "치킨") and not mentions(rec, "치")
     assert mentions({"대표식품명": "피자", "메뉴명": "콤비네이션피자", "식품대분류명": "빵 및 과자류"}, "피자")
-    assert not mentions({"대표식품명": "비빔밥", "메뉴명": "육회비빔밥", "식품대분류명": "밥류"}, "밥")
+    assert mentions({"대표식품명": "비빔밥", "메뉴명": "육회비빔밥", "식품대분류명": "밥류"}, "밥")  # 밥 -> 밥류 별칭
+    assert not mentions({"대표식품명": "김치찌개", "메뉴명": "김치찌개", "식품대분류명": "찌개 및 전골류"}, "밥")
     assert mentions({"대표식품명": "국수", "메뉴명": "잔치국수", "식품대분류명": "면 및 만두류"}, "면")
+    assert mentions({"대표식품명": "국밥", "메뉴명": "국밥 순대국밥", "식품대분류명": "밥류"}, "밥")
+    assert mentions({"대표식품명": "부추전", "메뉴명": "부추전", "식품대분류명": "전·적 및 부침류"}, "전")
+    assert mentions({"대표식품명": "부추전", "메뉴명": "부추전", "식품대분류명": "전·적 및 부침류"}, "전·적 및 부침류")
 
 
 def test_menu_exclusions_drop_matching_candidates_with_reason():
