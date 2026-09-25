@@ -77,9 +77,9 @@
 
 정규식 규칙 43개로 문장을 다섯 요소로 나눈다
 
-$$
+```math
 \pi(q) = (H, S, M, X, C)
-$$
+```
 
 | 기호 | 의미 | 예시 |
 |---|---|---|
@@ -92,17 +92,17 @@ $$
 - 규칙은 우선순위 순서로 적용하고 앞서 매칭된 구간과 겹치는 매칭은 버린다
 - 선호 표현 바로 뒤에 싫, 빼, 말고, 못 먹, 아닌, 별로 같은 거부어가 오면 극성을 뒤집어 여집합을 필수 조건으로 만든다
 
-$$
+```math
 (a, A) \in S \ \text{and followed by rejection} \ \Rightarrow \ (a,\ V_a \setminus A) \in H
-$$
+```
 
 - 예를 들어 매운 건 싫어 는 매운맛 없음 또는 약함 이라는 필수 조건이 된다
 - 꼭, 반드시, 무조건 이 앞에 붙으면 선호 조건을 같은 허용값의 필수 조건으로 올린다
 - 같은 속성의 필수 조건은 교집합으로 합치고, 교집합이 비면 모순으로 보고 결과 대신 사유를 돌려준다
 
-$$
+```math
 A^H_a = \bigcap_{i=1}^{m} A^{(i)}_a, \qquad A^H_a = \varnothing \Rightarrow \text{contradiction}
-$$
+```
 
 - 이중 부정이나 단짠, 상큼처럼 스키마 밖의 맛 표현은 조건 없이 기록만 한다
 
@@ -110,9 +110,9 @@ $$
 
 질의와 메뉴 텍스트를 같은 인코더로 임베딩하고 L2 정규화한 뒤 내적으로 유사도를 구한다
 
-$$
+```math
 s(q, d) = \left\langle f(\text{query}\ q),\ f(\text{passage}\ \text{text}(d)) \right\rangle, \qquad \lVert f(\cdot) \rVert_2 = 1
-$$
+```
 
 - 메뉴 텍스트는 메뉴명, 대표식품명, 식품대분류명 뒤에 미확인이 아닌 속성 값을 붙여 만든다
 - 속성 값을 붙인 텍스트가 이름만 쓴 텍스트보다 nDCG와 MRR 모두 높아 이를 기본으로 쓴다
@@ -120,26 +120,26 @@ $$
 
 ### 필터
 
-$$
-\mathcal{F}_k(q) = \left\{ d \in \mathcal{C}_k(q) \ :\ \forall (a, A) \in H,\ \ell_a(d) \in A \ \land\ \forall t \in X,\ \mu(d, t) = 0 \right\}
-$$
+```math
+\mathcal{F}_k(q) = \left\lbrace  d \in \mathcal{C}_k(q) \ :\ \forall (a, A) \in H,\ \ell_a(d) \in A \ \land\ \forall t \in X,\ \mu(d, t) = 0 \right \rbrace
+```
 
 - $\mathcal{C}_k(q)$ 는 유사도 상위 $k$ 개 후보, $\ell_a(d)$ 는 메뉴의 속성 라벨
 - $\mu(d, t)$ 는 메뉴가 용어를 가리키는지 여부로, 부분 문자열이 아니라 대표식품명이나 어절 단위 완전 일치로 판정해 무조건의 무가 무국과 맞는 식의 오탐을 막는다
 
 ### 재랭킹 점수
 
-$$
+```math
 p(q, d) = \frac{1}{|S|} \sum_{(a, A) \in S} \mathbb{1}\left[\ell_a(d) \in A\right]
-$$
+```
 
-$$
+```math
 b(q, d) = \max\left( w_m \cdot \max_{t \in M} \mu(d, t),\ \ w_c \cdot \max_{t \in C} \mu(d, t) \right)
-$$
+```
 
-$$
+```math
 \text{score}(q, d) = w_s \cdot s(q, d) + w_p \cdot p(q, d) + b(q, d)
-$$
+```
 
 | 가중치 | 값 | 의미 |
 |---|---:|---|
@@ -155,16 +155,16 @@ $$
 
 후보 100개 안에서 유사도 항의 폭은 평균 $0.014$, 최대 $0.036$ 으로 선호 조건 한 단계인 $w_p / |S| \ge 0.1$ 보다 한 자릿수 작다
 
-$$
+```math
 w_s \Delta_s(q) < \frac{w_p}{|S|} \ \Rightarrow\ \left( p(q, d) > p(q, d') \Rightarrow \text{score}(q, d) > \text{score}(q, d') \right)
-$$
+```
 
 - 따라서 재랭킹은 가점, 선호 일치율, 유사도 순의 사전식 정렬처럼 동작한다
 - 상황 가점이 명시한 선호 조건을 뒤집지 않으려면 아래 상한을 지켜야 하며, 선호 조건이 최대 3개일 때 $w_c < 0.064$ 이므로 $0.05$ 를 쓴다
 
-$$
+```math
 w_c < \frac{w_p}{|S|_{\max}} - w_s \Delta_s
-$$
+```
 
 - $w_m = w_p$ 로 두면 언급한 메뉴가 모든 선호 조건을 만족한 것과 같은 점수를 받는다
 
@@ -184,9 +184,9 @@ $$
 
 좋아요, 별로예요, 골랐어요 반응을 질의 단어와 메뉴 검색어 조합별로 세어 추천 점수에 바로 더한다
 
-$$
+```math
 f(q, m) = w_f \cdot \frac{1}{|T(q)|} \sum_{t \in T(q)} \frac{L_{t,m} - D_{t,m}}{L_{t,m} + D_{t,m} + \alpha}, \qquad w_f = 0.15,\ \alpha = 2
-$$
+```
 
 - $T(q)$ 는 질의를 공백으로 나눈 단어 집합, $L$ 과 $D$ 는 좋아요와 별로예요 수
 - 골랐어요는 좋아요 두 번으로 센다
@@ -200,9 +200,9 @@ $$
 - 질의 해시를 3으로 나눈 나머지가 0이면 평가용으로 두고 학습에서 뺀다
 - 손실은 배치 안의 다른 메뉴를 오답으로 쓰는 Multiple Negatives Ranking Loss 이다
 
-$$
+```math
 \mathcal{L} = -\frac{1}{B} \sum_{i=1}^{B} \log \frac{\exp\left(\text{sim}(q_i, d_i) / \tau\right)}{\sum_{j=1}^{B} \exp\left(\text{sim}(q_i, d_j) / \tau\right)}
-$$
+```
 
 - 한 배치에 같은 질의나 같은 메뉴가 두 번 들면 서로의 정답을 오답으로 배우므로 겹치지 않게 배치를 나눈다
 - 배치 크기 16, AdamW 학습률 $2 \times 10^{-5}$ 로 1에폭 학습하고 후보 1088개를 새 모델로 다시 인코딩한다
