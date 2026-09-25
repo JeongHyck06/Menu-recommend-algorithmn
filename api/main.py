@@ -2,7 +2,7 @@
 
 POST /parse      문장 -> 그룹별 태그 (맛, 메뉴, 상황)
 POST /recommend  문장 -> Top-K 메뉴, 피드백 가점 반영
-POST /feedback   추천 결과 좋아요·별로예요 저장
+POST /feedback   추천 결과 좋아요·별로예요·골랐어요 저장
 
 하루에 한 번 별도 프로세스로 api.finetune을 돌리고 모델이 바뀌면 다시 불러온다
 """
@@ -96,6 +96,7 @@ class FeedbackIn(BaseModel):
     menu: str = Field(default="", max_length=100)
     place_id: str = Field(default="", max_length=30)
     liked: bool
+    chosen: bool = False
 
 
 @app.get("/health")
@@ -105,7 +106,7 @@ def health():
 
 @app.post("/feedback")
 def feedback(body: FeedbackIn):
-    state["feedback"].add(body.query.strip(), body.keyword, body.menu, body.place_id, body.liked)
+    state["feedback"].add(body.query.strip(), body.keyword, body.menu, body.place_id, body.liked, body.chosen)
     return {"ok": True}
 
 

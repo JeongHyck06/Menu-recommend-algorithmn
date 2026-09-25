@@ -2,6 +2,7 @@
 
 질의를 공백으로 나눈 단어와 메뉴 검색어 조합별로 좋아요·별로예요 수를 세고
 (좋아요 - 별로예요) / (전체 + 사전값)을 단어 평균해 가점으로 쓴다
+"이걸로 골랐어요"는 좋아요 두 번으로 센다
 """
 
 import os
@@ -25,22 +26,28 @@ class FeedbackStore:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY, created_at REAL, query TEXT, keyword TEXT,"
-            " menu TEXT, place_id TEXT, liked INTEGER)")
+            " menu TEXT, place_id TEXT, liked INTEGER, chosen INTEGER DEFAULT 0)")
+        try:
+            self.conn.execute("ALTER TABLE feedback ADD COLUMN chosen INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         self.lock = threading.Lock()
         self.counts = defaultdict(lambda: [0, 0])
-        for query, keyword, liked in self.conn.execute("SELECT query, keyword, liked FROM feedback"):
-            self._count(query, keyword, liked)
+        for query, keyword, liked, chosen in self.conn.execute("SELECT query, keyword, liked, chosen FROM feedback"):
+            self._count(query, keyword, liked, chosen)
 
-    def _count(self, query, keyword, liked):
+    def _count(self, query, keyword, liked, chosen=False):
         for t in tokens(query):
-            self.counts[(t, keyword)][0 if liked else 1] += 1
+            self.counts[(t, keyword)][0 if liked else 1] += 2 if chosen else 1
 
-    def add(self, query, keyword, menu, place_id, liked: bool):
+    def add(self, query, keyword, menu, place_id, liked: bool, chosen: bool = False):
+        liked = liked or chosen
         with self.lock:
-            self.conn.execute("INSERT INTO feedback (created_at, query, keyword, menu, place_id, liked)"
-                              " VALUES (?, ?, ?, ?, ?, ?)", (time.time(), query, keyword, menu, place_id, int(liked)))
+            self.conn.execute("INSERT INTO feedback (created_at, query, keyword, menu, place_id, liked, chosen)"
+                              " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                              (time.time(), query, keyword, menu, place_id, int(liked), int(chosen)))
             self.conn.commit()
-            self._count(query, keyword, liked)
+            self._count(query, keyword, liked, chosen)
 
     def boost(self, query, keyword, weight=0.15, prior=2.0) -> float:
         """-weight ~ +weight, 피드백이 없으면 0"""

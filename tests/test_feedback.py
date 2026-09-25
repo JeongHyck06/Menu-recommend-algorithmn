@@ -39,3 +39,18 @@ def test_training_examples_maps_keyword_to_menu_text():
     records = [{"대표식품명": "라면", "메뉴명": "라면 라면만", "embedding_text": "라면 국물요리"},
                {"대표식품명": "라면", "메뉴명": "라면 해물", "embedding_text": "해물 라면"}]
     assert training_examples([("얼큰한 라면", "라면"), ("피자", "피자")], records) == [("얼큰한 라면", "라면 국물요리")]
+
+
+def test_chosen_counts_double_and_migrates_old_table(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE feedback (id INTEGER PRIMARY KEY, created_at REAL, query TEXT, keyword TEXT,"
+                " menu TEXT, place_id TEXT, liked INTEGER)")
+    old.execute("INSERT INTO feedback (created_at, query, keyword, menu, place_id, liked) VALUES (0, '라면', '우동', '', '', 1)")
+    old.commit()
+    store = FeedbackStore(path)
+    store.add("라면", "라면", "라면", "1", False, chosen=True)
+    assert store.counts[("라면", "라면")] == [2, 0]
+    assert store.counts[("라면", "우동")] == [1, 0]
+    assert store.boost("라면", "라면") > store.boost("라면", "우동")
